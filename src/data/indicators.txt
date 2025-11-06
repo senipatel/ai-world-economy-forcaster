@@ -1,0 +1,64 @@
+Economy
+GDP (Gross Domestic Product) (Current Prices, USD)
+Real GDP Growth (Annual %)
+GDP per capita (USD)
+GNI (Gross National Income) per capita
+Industrial Production (% change)
+Manufacturing Output
+Retail Sales (Volume)
+Productivity (GDP per hour worked)
+
+📈 Finance
+Inflation Rate, Consumer Prices (CPI) (Annual %)
+Producer Price Index (PPI)
+Central Bank Policy Rate (e.g., Federal Funds Rate)
+Government Gross Debt (% of GDP)
+Government Budget Balance (% of GDP) (Surplus or Deficit)
+Money Supply (M1, M2)
+Stock Market Index
+Government Bond Yields (e.g., 10-Year)
+Exchange Rate (vs. USD or EUR)
+Foreign Direct Investment (FDI), Net Inflows
+Total Reserves (including gold)
+Balance of Trade
+Current Account Balance (% of GDP)
+
+🧑‍🤝‍🧑 Social
+Unemployment Rate (Total, % of labor force)
+Youth Unemployment Rate
+Labor Force Participation Rate
+Population, Total
+Population Growth (Annual %)
+Poverty Headcount Ratio (% of population)
+Gini Index (Measure of income inequality)
+School Enrollment (Primary, Secondary, Tertiary)
+Literacy Rate
+Seats held by women in national parliaments (%)
+
+🩺 Medical (Health)
+Life Expectancy at Birth (Total, years)
+Maternal Mortality Ratio
+Child Mortality Rate (Under-5)
+Adolescent Birth Rate
+Adult Mortality Rate (Probability of dying between 15 and 60)
+Prevalence of Anemia in Women
+Prevalence of Undernourishment
+Prevalence of Obesity
+Alcohol Consumption (Liters per capita)
+Tobacco Use (% of adults)
+Hospital Beds (per 1,000 people)
+Physicians (per 1,000 people)
+Total Health Expenditure (% of GDP)
+Suicide Mortality Rate
+
+🌳 Nature (Environment)
+CO2 Emissions (Metric tons per capita)
+Greenhouse Gas (GHG) Emissions (Total)
+Renewable Energy Consumption (% of total final energy)
+Access to Electricity (% of population)
+Forest Area (% of land area)
+Freshwater Withdrawals (% of internal resources)
+Access to Clean Water (% of population)
+Access to Sanitation (% of population)
+Threatened Species (Mammals, Birds, Fish)
+Air Pollution (PM2.5 concentration)
