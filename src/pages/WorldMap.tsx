@@ -155,8 +155,9 @@ const WorldMap = () => {
   };
 
   const handleDashboardClick = () => {
-    if (selectedCountry) {
-      navigate(`/dashboard/${selectedCountry.code}`);
+    const code = selectedCountryDetails?.cca3 || selectedCountry?.code;
+    if (code) {
+      navigate(`/dashboard/${code}`);
     }
   };
 
@@ -270,15 +271,23 @@ const WorldMap = () => {
                       onClick={() => handleCountryClick(geo)}
                       style={{
                         default: {
-                          fill: "hsl(var(--map-fill))",
-                          stroke: (selectedNumericId && String(geo.id) === selectedNumericId) ? "hsl(var(--primary))" : "hsl(var(--map-border))",
-                          strokeWidth: 0.5,
+                          fill: (selectedNumericId && String(geo.id) === selectedNumericId)
+                            ? "hsl(var(--primary) / 0.20)"
+                            : "hsl(var(--map-fill))",
+                          stroke: (selectedNumericId && String(geo.id) === selectedNumericId)
+                            ? "hsl(var(--primary))"
+                            : "hsl(var(--map-border))",
+                          strokeWidth: (selectedNumericId && String(geo.id) === selectedNumericId) ? 1 : 0.5,
                           outline: "none",
                           transition: "all 0.2s"
                         },
                         hover: {
-                          fill: "hsl(var(--accent))",
-                          stroke: "hsl(var(--accent))",
+                          fill: (selectedNumericId && String(geo.id) === selectedNumericId)
+                            ? "hsl(var(--primary) / 0.20)"
+                            : "hsl(var(--accent))",
+                          stroke: (selectedNumericId && String(geo.id) === selectedNumericId)
+                            ? "hsl(var(--primary))"
+                            : "hsl(var(--accent))",
                           strokeWidth: 1,
                           outline: "none",
                           cursor: "pointer"
@@ -414,17 +423,14 @@ const WorldMap = () => {
                     </div>
                   </div>
 
-                  <button
-                    id="clear-selection-btn"
-                    className="mt-4 w-full bg-primary text-primary-foreground font-semibold py-3 px-4 rounded-md hover:opacity-90 transition-opacity"
-                    onClick={() => {
-                      setSelectedCountry(null);
-                      setSelectedNumericId(null);
-                      setSelectedCountryDetails(null);
-                    }}
+                  <Button
+                    variant="hero"
+                    size="lg"
+                    className="w-full mt-4"
+                    onClick={handleDashboardClick}
                   >
-                    Clear Selection
-                  </button>
+                    <BarChart3 className="mr-2 h-5 w-5" /> View Dashboard
+                  </Button>
                 </div>
               )}
               {!isLoadingDetails && !selectedCountryDetails && selectedCountry && (
@@ -448,6 +454,14 @@ const WorldMap = () => {
                       <span className="font-medium">{selectedCountry.currency}</span>
                     </div>
                   </Card>
+                  <Button
+                    variant="hero"
+                    size="lg"
+                    className="w-full mt-4"
+                    onClick={handleDashboardClick}
+                  >
+                    <BarChart3 className="mr-2 h-5 w-5" /> View Dashboard
+                  </Button>
                 </div>
               )}
             </motion.aside>
