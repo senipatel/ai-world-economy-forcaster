@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,16 @@ import {
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-// Sample data for demo
-const demoData = [
-  { year: "2019", value: 21428 },
-  { year: "2020", value: 20894 },
-  { year: "2021", value: 23315 },
-  { year: "2022", value: 25464 },
-  { year: "2023", value: 27362 },
-];
+interface ChartPoint { year: string; value: number | null }
+
+const DEFAULT_INDICATOR_CODE_MAP: Record<string, string> = {
+  "GDP (Current Prices, USD)": "NGDPD", // Nominal GDP (current USD) (approx code; may differ by dataset)
+  "Real GDP Growth (Annual %)": "NGDP_RPCH", // Real GDP growth percent change
+  "GDP per capita (USD)": "NGDPDPC", // GDP per capita current dollars
+  "Inflation Rate (CPI)": "PCPI_IX", // CPI Index placeholder
+};
+
+const DEFAULT_DATASET = "IFS"; // International Financial Statistics as default
 
 const indicators = [
   {
@@ -84,6 +86,9 @@ const Dashboard = () => {
   const { countryCode } = useParams();
   const navigate = useNavigate();
   const [selectedIndicator, setSelectedIndicator] = useState("GDP (Current Prices, USD)");
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState("5Y");
   const [frequency, setFrequency] = useState("Yearly");
   const [chatMessage, setChatMessage] = useState("");
@@ -91,6 +96,40 @@ const Dashboard = () => {
   const [openCategory, setOpenCategory] = useState<string | null>("Economy");
 
   const countryName = countryCode === "USA" ? "United States" : countryCode || "Unknown";
+
+  // Resolve reference area code (IMF often expects 2-letter; we pass the route param and let server attempt conversion).
+  const refArea = (countryCode || "US").toUpperCase();
+
+  const indicatorCode = DEFAULT_INDICATOR_CODE_MAP[selectedIndicator] || "PCPI_IX";
+
+  useEffect(() => {
+    let abort = false;
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          dataset: DEFAULT_DATASET,
+          indicator: indicatorCode,
+          refArea,
+          startPeriod: "2015",
+          endPeriod: "2024",
+        });
+        const res = await fetch(`/api/imf?${params.toString()}`);
+        if (!res.ok) throw new Error(`Failed to fetch IMF data: ${res.status}`);
+        const json = await res.json();
+        const points: ChartPoint[] = (json.data || []).map((p: any) => ({ year: p.date, value: p.value })) as ChartPoint[];
+        if (!abort) setChartData(points);
+      } catch (e: any) {
+        if (!abort) setError(e.message || "Unknown error");
+      } finally {
+        if (!abort) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { abort = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicatorCode, refArea]);
 
   const handleDownloadCSV = () => {
     // Download CSV functionality
@@ -245,7 +284,7 @@ const Dashboard = () => {
               {/* Chart */}
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={demoData}>
+                  <LineChart data={chartData.length ? chartData : []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis 
                       dataKey="year" 
@@ -269,6 +308,15 @@ const Dashboard = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              {loading && (
+                <p className="text-xs text-muted-foreground mt-2">Loading IMF data…</p>
+              )}
+              {error && !loading && (
+                <p className="text-xs text-destructive mt-2">{error}</p>
+              )}
+              {!loading && !error && chartData.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-2">No data available for the selected indicator.</p>
+              )}
             </Card>
 
             {/* AI Chat Section */}
