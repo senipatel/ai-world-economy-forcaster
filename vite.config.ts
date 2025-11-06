@@ -5,7 +5,6 @@ import { componentTagger } from "lovable-tagger";
 import type { Plugin } from "vite";
 
 // Import server handlers for dev-time API routing
-import { onRequest as imfHandler } from "./server/api/imf";
 import { onRequest as imf3Handler } from "./server/api/imf3";
 
 // https://vitejs.dev/config/
@@ -23,13 +22,12 @@ export default defineConfig(({ mode }) => ({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const url = req.url || "";
-          if (!url.startsWith("/api/imf") && !url.startsWith("/api/imf3")) return next();
+          if (!url.startsWith("/api/imf3")) return next();
 
           try {
             const fullUrl = `http://localhost:${server.config.server.port}${url}`;
             const request = new Request(fullUrl, { method: req.method, headers: req.headers as any });
-            const handler = url.startsWith("/api/imf3") ? imf3Handler : imfHandler;
-            const response = await handler(request);
+            const response = await imf3Handler(request);
             res.statusCode = response.status;
             response.headers.forEach((value, key) => res.setHeader(key, value));
             const body = await response.arrayBuffer();

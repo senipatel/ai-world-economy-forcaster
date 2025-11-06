@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/use-toast";
 import { 
   Globe, Home, Download, Calendar, 
   TrendingUp, DollarSign, Users, Heart, 
@@ -15,14 +16,62 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 interface ChartPoint { year: string; value: number | null }
 
-const DEFAULT_INDICATOR_CODE_MAP: Record<string, string> = {
-  "GDP (Current Prices, USD)": "NGDPD", // Nominal GDP (current USD) (approx code; may differ by dataset)
-  "Real GDP Growth (Annual %)": "NGDP_RPCH", // Real GDP growth percent change
-  "GDP per capita (USD)": "NGDPDPC", // GDP per capita current dollars
-  "Inflation Rate (CPI)": "PCPI_IX", // CPI Index placeholder
-};
+// --- Local cache helpers (simple localStorage with TTL) ---
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+function cacheKey(parts: Record<string, string>) {
+  return `imf:${parts.dataset}:${parts.code}:${parts.refArea}:${parts.start}:${parts.end}:${parts.freq}`;
+}
+function loadCache(key: string): ChartPoint[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || Date.now() - parsed.t > CACHE_TTL_MS) return null;
+    return Array.isArray(parsed.d) ? parsed.d : null;
+  } catch {
+    return null;
+  }
+}
+function saveCache(key: string, data: ChartPoint[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ t: Date.now(), d: data }));
+  } catch {}
+}
 
-const DEFAULT_DATASET = "IFS"; // International Financial Statistics as default
+// Map UI frequency to SDMX letters (used for cache key and future SDMX v3 calls)
+const FREQ_LETTER: Record<string, string> = { Monthly: "M", Quarterly: "Q", Yearly: "A" };
+
+// Many of the original indicator codes actually belong to the WEO (World Economic Outlook) dataset, not IFS.
+// We map each human-readable indicator to both an IMF code and its dataset to reduce empty responses.
+// NOTE: Codes are best-effort and may need refinement after validating against IMF metadata.
+const INDICATOR_DEFINITIONS: Record<string, { code: string; dataset: string }> = {
+  "GDP (Current Prices, USD)": { code: "NGDPD", dataset: "WEO" },
+  "Real GDP Growth (Annual %)": { code: "NGDP_RPCH", dataset: "WEO" },
+  "GDP per capita (USD)": { code: "NGDPDPC", dataset: "WEO" },
+  "Inflation Rate (CPI)": { code: "PCPI_IX", dataset: "WEO" },
+  // Placeholders below – need proper code/dataset verification
+  "GNI per capita": { code: "NGNI_PC", dataset: "WEO" }, // tentative
+  "Industrial Production (% change)": { code: "IPI_RPCH", dataset: "IFS" }, // example IFS-style placeholder
+  "Producer Price Index": { code: "PPPI_IX", dataset: "WEO" },
+  "Central Bank Policy Rate": { code: "FPOLM_PA", dataset: "IFS" },
+  "Government Gross Debt (% of GDP)": { code: "GGXWDG_NGDP", dataset: "WEO" },
+  "Stock Market Index": { code: "STOCK_IX", dataset: "IFS" },
+  "Unemployment Rate": { code: "LUR_PT", dataset: "WEO" },
+  "Youth Unemployment Rate": { code: "LURY_PT", dataset: "WEO" },
+  "Population, Total": { code: "LP", dataset: "WEO" },
+  "Population Growth (Annual %)": { code: "LP_RPCH", dataset: "WEO" },
+  "Gini Index": { code: "GINI", dataset: "WEO" },
+  "Life Expectancy at Birth": { code: "LE", dataset: "WEO" },
+  "Maternal Mortality Ratio": { code: "MATMORT", dataset: "WEO" },
+  "Child Mortality Rate": { code: "CHILDMORT", dataset: "WEO" },
+  "Health Expenditure (% of GDP)": { code: "HEXP_NGDP", dataset: "WEO" },
+  "Hospital Beds (per 1,000)": { code: "HOSPBEDS_PT", dataset: "WEO" },
+  "CO2 Emissions (per capita)": { code: "EN_ATM_CO2E_PC", dataset: "WEO" },
+  "Renewable Energy Consumption": { code: "RENEW_EN", dataset: "WEO" },
+  "Access to Electricity": { code: "ELEC_ACCESS_PT", dataset: "WEO" },
+  "Forest Area (% of land)": { code: "FOREST_PT", dataset: "WEO" },
+  "Air Pollution (PM2.5)": { code: "PM25", dataset: "WEO" },
+};
 
 const indicators = [
   {
@@ -100,28 +149,75 @@ const Dashboard = () => {
   // Resolve reference area code (IMF often expects 2-letter; we pass the route param and let server attempt conversion).
   const refArea = (countryCode || "US").toUpperCase();
 
-  const indicatorCode = DEFAULT_INDICATOR_CODE_MAP[selectedIndicator] || "PCPI_IX";
+  const { code: indicatorCode, dataset } = INDICATOR_DEFINITIONS[selectedIndicator] || { code: "PCPI_IX", dataset: "WEO" };
 
   useEffect(() => {
     let abort = false;
+    // derive time window
+    const nowYear = new Date().getFullYear();
+    const endP = String(nowYear);
+    const startP = (() => {
+      switch (timeRange) {
+        case "1Y": return String(nowYear - 1);
+        case "3Y": return String(nowYear - 3);
+        case "5Y": return String(nowYear - 5);
+        case "10Y": return String(nowYear - 10);
+        case "Max": default: return "1980";
+      }
+    })();
+
     async function loadData() {
       setLoading(true);
       setError(null);
       try {
+  const freqLetter = FREQ_LETTER[frequency] || "A";
+  // WEO dataset is annual only; omit frequency in key for better compatibility.
+  const key3 = dataset === "WEO" ? `${refArea}.${indicatorCode}` : `${freqLetter}.${refArea}.${indicatorCode}`;
         const params = new URLSearchParams({
-          dataset: DEFAULT_DATASET,
-          indicator: indicatorCode,
-          refArea,
-          startPeriod: "2015",
-          endPeriod: "2024",
+          type: "data",
+          resourceID: dataset,
+          key: key3,
+          startPeriod: startP,
+          endPeriod: endP,
         });
-        const res = await fetch(`/api/imf?${params.toString()}`);
+        // pass client-side meta to the API for logging/diagnostics
+        params.set("freq", freqLetter);
+        params.set("indicatorLabel", selectedIndicator);
+        params.set("timeRange", timeRange);
+        params.set("clientTs", new Date().toISOString());
+        const key = cacheKey({ dataset, code: indicatorCode, refArea, start: startP, end: endP, freq: freqLetter });
+        const cached = loadCache(key);
+        if (cached && !abort) {
+          setChartData(cached);
+          setLoading(false);
+          return; // serve from cache
+        }
+
+        const res = await fetch(`/api/imf3?${params.toString()}`);
         if (!res.ok) throw new Error(`Failed to fetch IMF data: ${res.status}`);
         const json = await res.json();
         const points: ChartPoint[] = (json.data || []).map((p: any) => ({ year: p.date, value: p.value })) as ChartPoint[];
-        if (!abort) setChartData(points);
+        if (!abort) {
+          setChartData(points);
+          if (points.length) saveCache(key, points);
+          if (points.length === 0) {
+            setError("No data available for the selected indicator.");
+            toast({
+              title: "No Data",
+              description: `No ${selectedIndicator} data returned (dataset: ${dataset}, code: ${indicatorCode}, area: ${refArea}).`,
+              variant: "destructive",
+            });
+          }
+        }
       } catch (e: any) {
-        if (!abort) setError(e.message || "Unknown error");
+        if (!abort) {
+          setError(e.message || "Unknown error");
+          toast({
+            title: "IMF Data Error",
+            description: e.message || "Unknown error fetching data.",
+            variant: "destructive",
+          });
+        }
       } finally {
         if (!abort) setLoading(false);
       }
@@ -129,7 +225,7 @@ const Dashboard = () => {
     loadData();
     return () => { abort = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicatorCode, refArea]);
+  }, [indicatorCode, refArea, dataset, selectedIndicator, timeRange, frequency]);
 
   const handleDownloadCSV = () => {
     // Download CSV functionality

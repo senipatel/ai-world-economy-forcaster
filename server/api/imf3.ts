@@ -114,6 +114,11 @@ async function handler(req: Request): Promise<Response> {
   const updatedAfter = url.searchParams.get('updatedAfter') || undefined;
   const references = url.searchParams.get('references') || undefined;
   const mode = url.searchParams.get('mode') || undefined;
+  // Optional client meta passthrough (for diagnostics/UI)
+  const freq = url.searchParams.get('freq') || undefined;
+  const indicatorLabel = url.searchParams.get('indicatorLabel') || undefined;
+  const timeRange = url.searchParams.get('timeRange') || undefined;
+  const clientTs = url.searchParams.get('clientTs') || undefined;
   const apiKey = envKey();
 
   const query: Record<string,string|undefined> = {
@@ -127,18 +132,65 @@ async function handler(req: Request): Promise<Response> {
     targetUrl = buildDataUrl({ agencyID, resourceID, version, key, query });
   }
 
+  // Attempt primary fetch; on failure for 'data' type, try pragmatic key variants for common issues
   let json: any;
   let data: SdmxPoint[] = [];
-  try {
-    json = await fetchJson(targetUrl, apiKey);
-    if (type === 'data') {
-      data = normalizeData(json);
+  const attempts: string[] = [];
+  const tryFetch = async (u: string) => {
+    attempts.push(u);
+    const j = await fetchJson(u, apiKey);
+    const d = type === 'data' ? normalizeData(j) : [];
+    return { j, d };
+  };
+
+  const mkUrl = (k: string) => type === 'availability'
+    ? buildAvailabilityUrl({ context: 'data', agencyID, resourceID, version, key: k, componentID, query })
+    : buildDataUrl({ agencyID, resourceID, version, key: k, query });
+
+  const variants: string[] = [key];
+  // If data and likely 3-part key (FREQ.REF_AREA.INDICATOR), try alternatives for REF_AREA length (RU vs RUS)
+  if (type === 'data') {
+    const parts = key.split('.');
+    if (parts.length >= 3) {
+      const [f, area, ind, ...rest] = parts;
+      const others: string[] = [];
+      // swap area 2/3 letter
+      if (area && area.length === 3) others.push([f, area.slice(0,2), ind, ...rest].join('.'));
+      if (area && area.length === 2) others.push([f, area + 'S', ind, ...rest].join('.'));
+      // try different order: FREQ.INDICATOR.REF_AREA
+      others.push([f, ind, area, ...rest].join('.'));
+      // append ALL for missing trailing dims
+      if (rest.length === 0) others.push([f, area, ind, 'ALL'].join('.'));
+      for (const v of others) if (!variants.includes(v)) variants.push(v);
     }
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message, url: targetUrl }), { status: 502, headers: { 'content-type': 'application/json' } });
   }
 
-  return new Response(JSON.stringify({ meta: { type, agencyID, resourceID, version, key, componentID, url: targetUrl }, data, raw: json }), {
+  try {
+    // primary
+    ({ j: json, d: data } = await tryFetch(targetUrl));
+  } catch (_e) {
+    // retry with variants (data case only)
+    if (type === 'data') {
+      for (const v of variants.slice(1)) {
+        try {
+          const url2 = mkUrl(v);
+          const r = await tryFetch(url2);
+          json = r.j;
+          data = r.d;
+          if (data.length) {
+            return new Response(JSON.stringify({ meta: { type, agencyID, resourceID, version, key: v, componentID, url: url2, freq, indicatorLabel, timeRange, clientTs, attempts }, data, raw: json }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' }
+            });
+          }
+        } catch { /* continue */ }
+      }
+    }
+    const err = (_e as Error)?.message || 'Unknown error';
+    return new Response(JSON.stringify({ error: err, url: targetUrl, attempts }), { status: 502, headers: { 'content-type': 'application/json' } });
+  }
+
+  return new Response(JSON.stringify({ meta: { type, agencyID, resourceID, version, key, componentID, url: targetUrl, freq, indicatorLabel, timeRange, clientTs, attempts }, data, raw: json }), {
     status: 200,
     headers: { 'content-type': 'application/json' }
   });
