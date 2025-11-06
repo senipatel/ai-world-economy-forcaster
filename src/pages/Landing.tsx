@@ -3,8 +3,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { TrendingUp, Globe, BarChart3, Brain, ArrowRight, Lightbulb, Target, Mail, MessageSquare, Activity, TrendingDown, AlertCircle, Zap } from "lucide-react";
+import { TrendingUp, Globe, BarChart3, Brain, ArrowRight, Lightbulb, Target, Mail, MessageSquare, Activity, TrendingDown, AlertCircle, Zap, Code, Cpu, Database, Cloud, Layers, PieChart } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import Footer from "@/components/Footer";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -230,14 +231,14 @@ const Landing = () => {
               <h3 className="text-2xl font-semibold mb-6">Built With Modern Technology</h3>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { name: "React", icon: "⚛️" },
-                  { name: "TypeScript", icon: "📘" },
-                  { name: "Vite", icon: "⚡" },
-                  { name: "Tailwind CSS", icon: "🎨" },
-                  { name: "Shadcn UI", icon: "🧩" },
-                  { name: "Gemini AI", icon: "🤖" },
-                  { name: "FRED API", icon: "📊" },
-                  { name: "Recharts", icon: "📈" }
+                  { name: "React", icon: <Code className="h-6 w-6" /> },
+                  { name: "TypeScript", icon: <Code className="h-6 w-6" /> },
+                  { name: "Vite", icon: <Cloud className="h-6 w-6" /> },
+                  { name: "Tailwind CSS", icon: <Layers className="h-6 w-6" /> },
+                  { name: "Shadcn UI", icon: <Cpu className="h-6 w-6" /> },
+                  { name: "Gemini AI", icon: <Brain className="h-6 w-6" /> },
+                  { name: "FRED API", icon: <Database className="h-6 w-6" /> },
+                  { name: "Recharts", icon: <PieChart className="h-6 w-6" /> }
                 ].map((tech, i) => (
                   <motion.div
                     key={tech.name}
@@ -247,7 +248,7 @@ const Landing = () => {
                     transition={{ delay: i * 0.05 }}
                     className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                   >
-                    <span className="text-2xl">{tech.icon}</span>
+                    <span className="text-primary">{tech.icon}</span>
                     <span className="font-medium">{tech.name}</span>
                   </motion.div>
                 ))}
@@ -344,12 +345,7 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border/50 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-muted-foreground">
-          <p>© 2025 AI Economy Forecaster. Powered by advanced data analytics and AI.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

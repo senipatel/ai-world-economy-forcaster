@@ -61,9 +61,9 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 215 12% 12%;
     --sidebar-border: 220 12% 92%;
     --sidebar-ring: 190 90% 45%;
-    /* Map-specific tokens for better visibility in light mode */
-    --map-fill: 0 0% 100%; /* white */
-    --map-border: 210 8% 80%; /* light gray */
+  /* Map-specific tokens for better visibility in light mode (white + gray combo, darker borders) */
+  --map-fill: 0 0% 100%; /* white */
+  --map-border: 210 8% 38%; /* darker gray border for clear separation */
   }
 
   .dark {
