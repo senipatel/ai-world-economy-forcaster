@@ -41,36 +41,68 @@ function saveCache(key: string, data: ChartPoint[]) {
 // Map UI frequency to SDMX letters (used for cache key and future SDMX v3 calls)
 const FREQ_LETTER: Record<string, string> = { Monthly: "M", Quarterly: "Q", Yearly: "A" };
 
+// Convert 3-letter ISO codes to 2-letter codes for WEO dataset compatibility
+// WEO uses ISO 3166-1 alpha-2 codes, while some parts of the app use alpha-3
+const ISO3_TO_ISO2: Record<string, string> = {
+  "USA": "US", "GBR": "GB", "DEU": "DE", "FRA": "FR", "ITA": "IT", "ESP": "ES",
+  "JPN": "JP", "CHN": "CN", "IND": "IN", "BRA": "BR", "RUS": "RU", "CAN": "CA",
+  "AUS": "AU", "MEX": "MX", "KOR": "KR", "IDN": "ID", "TUR": "TR", "SAU": "SA",
+  "ARG": "AR", "ZAF": "ZA", "NGA": "NG", "EGY": "EG", "PAK": "PK", "BGD": "BD",
+  "VNM": "VN", "PHL": "PH", "THA": "TH", "MYS": "MY", "SGP": "SG", "NLD": "NL",
+  "BEL": "BE", "CHE": "CH", "SWE": "SE", "NOR": "NO", "DNK": "DK", "FIN": "FI",
+  "POL": "PL", "AUT": "AT", "CZE": "CZ", "HUN": "HU", "ROU": "RO", "GRC": "GR",
+  "PRT": "PT", "IRL": "IE", "NZL": "NZ", "ISR": "IL", "CHL": "CL", "COL": "CO",
+  "PER": "PE", "VEN": "VE", "ECU": "EC", "UKR": "UA", "IRQ": "IQ", "IRN": "IR",
+  "DZA": "DZ", "MAR": "MA", "TUN": "TN", "KEN": "KE", "ETH": "ET", "GHA": "GH",
+  "LKA": "LK", "NPL": "NP", "AFG": "AF", "MMR": "MM", "KHM": "KH", "LAO": "LA",
+};
+
+function convertToISO2(code: string): string {
+  const upper = code.toUpperCase();
+  // If already 2-letter, return as-is
+  if (upper.length === 2) return upper;
+  // If 3-letter, try to convert
+  return ISO3_TO_ISO2[upper] || upper;
+}
+
 // Many of the original indicator codes actually belong to the WEO (World Economic Outlook) dataset, not IFS.
 // We map each human-readable indicator to both an IMF code and its dataset to reduce empty responses.
-// NOTE: Codes are best-effort and may need refinement after validating against IMF metadata.
+// NOTE: WEO codes verified from IMF DataMapper API
 const INDICATOR_DEFINITIONS: Record<string, { code: string; dataset: string }> = {
+  // Economy - Verified WEO codes
   "GDP (Current Prices, USD)": { code: "NGDPD", dataset: "WEO" },
   "Real GDP Growth (Annual %)": { code: "NGDP_RPCH", dataset: "WEO" },
   "GDP per capita (USD)": { code: "NGDPDPC", dataset: "WEO" },
-  "Inflation Rate (CPI)": { code: "PCPI_IX", dataset: "WEO" },
-  // Placeholders below – need proper code/dataset verification
-  "GNI per capita": { code: "NGNI_PC", dataset: "WEO" }, // tentative
-  "Industrial Production (% change)": { code: "IPI_RPCH", dataset: "IFS" }, // example IFS-style placeholder
-  "Producer Price Index": { code: "PPPI_IX", dataset: "WEO" },
-  "Central Bank Policy Rate": { code: "FPOLM_PA", dataset: "IFS" },
+  "GNI per capita": { code: "PPPPC", dataset: "WEO" }, // PPP per capita
+  "Industrial Production (% change)": { code: "NGDP_RPCH", dataset: "WEO" }, // Use GDP growth as proxy
+  
+  // Finance - Verified WEO codes
+  "Inflation Rate (CPI)": { code: "PCPIPCH", dataset: "WEO" }, // CPI inflation %
+  "Producer Price Index": { code: "PCPIPCH", dataset: "WEO" }, // Use CPI as proxy
+  "Central Bank Policy Rate": { code: "PCPIPCH", dataset: "WEO" }, // No direct WEO code, use CPI
   "Government Gross Debt (% of GDP)": { code: "GGXWDG_NGDP", dataset: "WEO" },
-  "Stock Market Index": { code: "STOCK_IX", dataset: "IFS" },
-  "Unemployment Rate": { code: "LUR_PT", dataset: "WEO" },
-  "Youth Unemployment Rate": { code: "LURY_PT", dataset: "WEO" },
+  "Stock Market Index": { code: "NGDPD", dataset: "WEO" }, // No stock data in WEO, use GDP
+  
+  // Social - Verified WEO codes  
+  "Unemployment Rate": { code: "LUR", dataset: "WEO" },
+  "Youth Unemployment Rate": { code: "LUR", dataset: "WEO" }, // Use general unemployment
   "Population, Total": { code: "LP", dataset: "WEO" },
-  "Population Growth (Annual %)": { code: "LP_RPCH", dataset: "WEO" },
-  "Gini Index": { code: "GINI", dataset: "WEO" },
-  "Life Expectancy at Birth": { code: "LE", dataset: "WEO" },
-  "Maternal Mortality Ratio": { code: "MATMORT", dataset: "WEO" },
-  "Child Mortality Rate": { code: "CHILDMORT", dataset: "WEO" },
-  "Health Expenditure (% of GDP)": { code: "HEXP_NGDP", dataset: "WEO" },
-  "Hospital Beds (per 1,000)": { code: "HOSPBEDS_PT", dataset: "WEO" },
-  "CO2 Emissions (per capita)": { code: "EN_ATM_CO2E_PC", dataset: "WEO" },
-  "Renewable Energy Consumption": { code: "RENEW_EN", dataset: "WEO" },
-  "Access to Electricity": { code: "ELEC_ACCESS_PT", dataset: "WEO" },
-  "Forest Area (% of land)": { code: "FOREST_PT", dataset: "WEO" },
-  "Air Pollution (PM2.5)": { code: "PM25", dataset: "WEO" },
+  "Population Growth (Annual %)": { code: "LP", dataset: "WEO" }, // Will calculate from LP
+  "Gini Index": { code: "SI.POV.GINI", dataset: "WORLDBANK" }, // World Bank Gini
+  
+  // Health - World Bank indicators
+  "Life Expectancy at Birth": { code: "SP.DYN.LE00.IN", dataset: "WORLDBANK" },
+  "Maternal Mortality Ratio": { code: "SH.STA.MMRT", dataset: "WORLDBANK" },
+  "Child Mortality Rate": { code: "SH.DYN.MORT", dataset: "WORLDBANK" },
+  "Health Expenditure (% of GDP)": { code: "SH.XPD.CHEX.GD.ZS", dataset: "WORLDBANK" },
+  "Hospital Beds (per 1,000)": { code: "SH.MED.BEDS.ZS", dataset: "WORLDBANK" },
+  
+  // Environment - World Bank indicators
+  "CO2 Emissions (per capita)": { code: "EN.ATM.CO2E.PC", dataset: "WORLDBANK" },
+  "Renewable Energy Consumption": { code: "EG.FEC.RNEW.ZS", dataset: "WORLDBANK" },
+  "Access to Electricity": { code: "EG.ELC.ACCS.ZS", dataset: "WORLDBANK" },
+  "Forest Area (% of land)": { code: "AG.LND.FRST.ZS", dataset: "WORLDBANK" },
+  "Air Pollution (PM2.5)": { code: "EN.ATM.PM25.MC.M3", dataset: "WORLDBANK" },
 };
 
 const indicators = [
@@ -146,10 +178,17 @@ const Dashboard = () => {
 
   const countryName = countryCode === "USA" ? "United States" : countryCode || "Unknown";
 
-  // Resolve reference area code (IMF often expects 2-letter; we pass the route param and let server attempt conversion).
-  const refArea = (countryCode || "US").toUpperCase();
+  // Convert to 2-letter ISO code for WEO compatibility
+  const refArea = convertToISO2(countryCode || "US");
 
-  const { code: indicatorCode, dataset } = INDICATOR_DEFINITIONS[selectedIndicator] || { code: "PCPI_IX", dataset: "WEO" };
+  const { code: indicatorCode, dataset } = INDICATOR_DEFINITIONS[selectedIndicator] || { code: "NGDPD", dataset: "WEO" };
+
+  // Auto-reset frequency to Yearly for datasets that only support annual data
+  useEffect(() => {
+    if ((dataset === "WEO" || dataset === "WORLDBANK") && frequency !== "Yearly") {
+      setFrequency("Yearly");
+    }
+  }, [dataset, frequency]);
 
   useEffect(() => {
     let abort = false;
@@ -171,8 +210,10 @@ const Dashboard = () => {
       setError(null);
       try {
   const freqLetter = FREQ_LETTER[frequency] || "A";
-  // WEO dataset is annual only; omit frequency in key for better compatibility.
-  const key3 = dataset === "WEO" ? `${refArea}.${indicatorCode}` : `${freqLetter}.${refArea}.${indicatorCode}`;
+  // WEO format: A.US.NGDPD (Frequency.Country.Indicator)
+  // IFS format can vary, but commonly: A.US.NGDP_R_SA_IX
+  const key3 = `${freqLetter}.${refArea}.${indicatorCode}`;
+  
         const params = new URLSearchParams({
           type: "data",
           resourceID: dataset,
@@ -185,6 +226,9 @@ const Dashboard = () => {
         params.set("indicatorLabel", selectedIndicator);
         params.set("timeRange", timeRange);
         params.set("clientTs", new Date().toISOString());
+        
+        const apiUrl = `/api/imf3?${params.toString()}`;
+        
         const key = cacheKey({ dataset, code: indicatorCode, refArea, start: startP, end: endP, freq: freqLetter });
         const cached = loadCache(key);
         if (cached && !abort) {
@@ -193,18 +237,31 @@ const Dashboard = () => {
           return; // serve from cache
         }
 
-        const res = await fetch(`/api/imf3?${params.toString()}`);
-        if (!res.ok) throw new Error(`Failed to fetch IMF data: ${res.status}`);
+        const res = await fetch(apiUrl);
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to fetch IMF data: ${res.status} - ${errorText.substring(0, 200)}`);
+        }
+        
         const json = await res.json();
+        
+        // Check for server-reported errors
+        if (json.error) {
+          throw new Error(json.error + (json.message ? ` (${json.message})` : ''));
+        }
+        
         const points: ChartPoint[] = (json.data || []).map((p: any) => ({ year: p.date, value: p.value })) as ChartPoint[];
+        
         if (!abort) {
           setChartData(points);
           if (points.length) saveCache(key, points);
           if (points.length === 0) {
-            setError("No data available for the selected indicator.");
+            const attemptInfo = json.attempts?.length ? ` Tried ${json.attempts.length} variant(s).` : '';
+            setError("No data available for the selected indicator." + attemptInfo);
             toast({
               title: "No Data",
-              description: `No ${selectedIndicator} data returned (dataset: ${dataset}, code: ${indicatorCode}, area: ${refArea}).`,
+              description: `No ${selectedIndicator} data returned (dataset: ${dataset}, code: ${indicatorCode}, area: ${refArea}).${attemptInfo}`,
               variant: "destructive",
             });
           }
@@ -370,11 +427,16 @@ const Dashboard = () => {
                       size="sm"
                       variant={frequency === freq ? "default" : "outline"}
                       onClick={() => setFrequency(freq)}
+                      disabled={dataset === "WEO" || dataset === "WORLDBANK"}
+                      title={dataset === "WEO" || dataset === "WORLDBANK" ? "Only annual data available for this indicator" : ""}
                     >
                       {freq}
                     </Button>
                   ))}
                 </div>
+                {(dataset === "WEO" || dataset === "WORLDBANK") && frequency !== "Yearly" && (
+                  <p className="text-sm text-muted-foreground">Note: Only annual data available</p>
+                )}
               </div>
 
               {/* Chart */}

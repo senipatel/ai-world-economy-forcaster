@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
@@ -8,7 +8,16 @@ import type { Plugin } from "vite";
 import { onRequest as imf3Handler } from "./server/api/imf3";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  // Load env file - pass empty string as prefix to load ALL variables (not just VITE_)
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  // Make CHART_API_KEY and IMF_API_KEY available to server-side handlers
+  if (env.CHART_API_KEY) process.env.CHART_API_KEY = env.CHART_API_KEY;
+  if (env.IMF_API_KEY) process.env.IMF_API_KEY = env.IMF_API_KEY;
+  if (env.LLM_API_KEY) process.env.LLM_API_KEY = env.LLM_API_KEY;
+  
+  return {
   server: {
     host: "::",
     port: 8080,
@@ -22,6 +31,7 @@ export default defineConfig(({ mode }) => ({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const url = req.url || "";
+          
           if (!url.startsWith("/api/imf3")) return next();
 
           try {
@@ -46,4 +56,4 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+}});
