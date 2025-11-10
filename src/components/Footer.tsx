@@ -17,8 +17,8 @@ const Footer: React.FC = () => {
           </div>
 
           <div className="text-sm text-muted-foreground text-center">
-            <div>Developers: <a className="text-primary hover:underline" href="https://github.com/Sapna190">Sapna Sharma</a> • <a className="text-primary hover:underline" href="https://github.com/senipatel">Seni Patel</a></div>
-            <div className="mt-2">Built for <a className="text-primary hover:underline" href="https://hacknomics.devpost.com/">HackNomics</a> • © 2025</div>
+            <div>Developers: <a className="text-primary hover:underline" target="_blank" href="https://github.com/Sapna190">Sapna Sharma</a> • <a className="text-primary hover:underline"target="_blank" href="https://github.com/senipatel">Seni Patel</a></div>
+            <div className="mt-2">Built for <a className="text-primary hover:underline" target="_blank" href="https://hacknomics.devpost.com/">HackNomics</a> • © 2025</div>
           </div>
 
           <div className="flex items-center gap-3">
