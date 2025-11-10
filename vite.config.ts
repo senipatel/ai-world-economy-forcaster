@@ -60,29 +60,22 @@ export default defineConfig(({ mode }) => {
               console.log('[vite-middleware] LLM Chat request received');
               
               // Read request body for POST requests
-              let bodyBuffer: Buffer | undefined;
+              let bodyString = '';
               if (req.method === 'POST') {
                 const chunks: Buffer[] = [];
                 for await (const chunk of req) {
                   chunks.push(chunk);
                 }
-                bodyBuffer = Buffer.concat(chunks);
-                console.log('[vite-middleware] Request body received, size:', bodyBuffer.length);
+                bodyString = Buffer.concat(chunks).toString('utf-8');
+                console.log('[vite-middleware] Request body:', bodyString.substring(0, 100) + '...');
               }
               
               const fullUrl = `http://localhost:${server.config.server.port}${url}`;
-              
-              // Create a custom Request-like object that can properly handle .json()
-              const requestInit: any = { 
+              const request = new Request(fullUrl, { 
                 method: req.method, 
                 headers: req.headers as any,
-              };
-              
-              if (bodyBuffer) {
-                requestInit.body = bodyBuffer;
-              }
-              
-              const request = new Request(fullUrl, requestInit);
+                body: bodyString || undefined
+              });
               
               console.log('[vite-middleware] Calling LLM handler...');
               const response = await llmChatHandler(request);
@@ -93,11 +86,10 @@ export default defineConfig(({ mode }) => {
               const responseBody = await response.arrayBuffer();
               res.end(Buffer.from(responseBody));
             } catch (e: any) {
-              console.error('[vite-middleware] LLM Chat error:', e.message);
-              console.error('[vite-middleware] Stack trace:', e.stack);
+              console.error('[vite-middleware] LLM Chat error:', e);
               res.statusCode = 500;
               res.setHeader("content-type", "application/json");
-              res.end(JSON.stringify({ error: e?.message || "Internal error" }));
+              res.end(JSON.stringify({ error: e?.message || "Internal error", stack: e?.stack }));
             }
             return;
           }

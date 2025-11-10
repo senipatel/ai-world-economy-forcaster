@@ -140,19 +140,13 @@ export async function handler(req: Request): Promise<Response> {
     let body: ChatRequest;
     
     try {
-      // Read the body as text first
-      const bodyText = await req.text();
-      console.log('[LLMChat] Body text length:', bodyText.length);
-      console.log('[LLMChat] Body text preview:', bodyText.substring(0, 100));
-      
-      // Parse JSON
-      body = JSON.parse(bodyText) as ChatRequest;
+      body = await req.json() as ChatRequest;
       console.log('[LLMChat] Request parsed successfully');
     } catch (parseError: any) {
       console.error('[LLMChat] Failed to parse JSON:', parseError.message);
       return new Response(JSON.stringify({
         success: false,
-        error: 'Invalid JSON in request body: ' + parseError.message
+        error: 'Invalid JSON in request body'
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -241,7 +235,8 @@ Important: Focus on the actual data provided and give specific numerical insight
     
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Failed to process chat request'
+      error: error.message || 'Failed to process chat request',
+      details: error.stack
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
