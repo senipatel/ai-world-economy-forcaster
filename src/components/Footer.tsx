@@ -1,5 +1,5 @@
 import React from "react";
-import { Globe } from "lucide-react";
+import Logo from "./Logo";
 
 const Footer: React.FC = () => {
   return (
@@ -7,9 +7,7 @@ const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center">
-              <Globe className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <Logo size={40} />
             <div>
               <div className="text-lg font-semibold">AI Economic Forecaster</div>
               <div className="text-sm text-muted-foreground">Democratizing economic forecasting with real-time data and AI</div>

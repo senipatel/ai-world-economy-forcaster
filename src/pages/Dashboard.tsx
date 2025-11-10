@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/use-toast";
+import Logo from "@/components/Logo";
 import { 
   Globe, Home, Download, Calendar, 
   TrendingUp, DollarSign, Users, Heart, 
@@ -582,7 +583,7 @@ const Dashboard = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6">
               <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                <Globe className="h-8 w-8 text-accent" />
+                <Logo size={50} />
                 <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                   AI Economy Forecaster
                 </span>

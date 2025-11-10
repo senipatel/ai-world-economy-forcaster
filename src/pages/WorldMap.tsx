@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import Logo from "@/components/Logo";
 import { Globe, Search, Home, BarChart3, X } from "lucide-react";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -169,7 +170,7 @@ const WorldMap = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6">
               <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                <Globe className="h-8 w-8 text-accent" />
+                <Logo size={32} />
                 <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                   AI Economy Forecaster
                 </span>

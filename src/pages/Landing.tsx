@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import Logo from "@/components/Logo";
 import { TrendingUp, Globe, BarChart3, Brain, ArrowRight, Lightbulb, Target, Mail, MessageSquare, Activity, TrendingDown, AlertCircle, Zap, Code, Cpu, Database, Cloud, Layers, PieChart } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import Footer from "@/components/Footer";
@@ -21,9 +22,7 @@ const Landing = () => {
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-2"
             >
-              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center">
-                <Globe className="h-5 w-5 text-primary-foreground" />
-              </div>
+              <Logo size={32} />
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 AI Economic Forecaster
               </span>

@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
+import Logo from "@/components/Logo";
 import { Globe, ArrowLeft, Mail, MessageSquare } from "lucide-react";
 
 const Contact = () => {
@@ -13,7 +14,7 @@ const Contact = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <button onClick={() => navigate("/")} className="flex items-center gap-2">
-              <Globe className="h-8 w-8 text-accent" />
+              <Logo size={32} />
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 AI Economy Forecaster
               </span>
