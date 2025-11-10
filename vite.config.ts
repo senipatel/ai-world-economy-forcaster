@@ -15,10 +15,9 @@ export default defineConfig(({ mode }) => {
   
   // Make CHART_API_KEY and IMF_API_KEY available to server-side handlers
   if (env.CHART_API_KEY) process.env.CHART_API_KEY = env.CHART_API_KEY;
-  if (env.IMF_API_KEY) process.env.IMF_API_KEY = env.IMF_API_KEY;
   if (env.LLM_API_KEY) {
     process.env.LLM_API_KEY = env.LLM_API_KEY;
-    console.log('[vite-config] LLM_API_KEY loaded:', env.LLM_API_KEY.substring(0, 10) + '...');
+    console.log('[vite-config] LLM_API_KEY loaded:', env.LLM_API_KEY.substring(0,10)+'...');
   }
   
   return {
@@ -55,45 +54,56 @@ export default defineConfig(({ mode }) => {
           }
           
           // Route for LLM Chat API
-          if (url.startsWith("/api/chat/llm")) {
+          if (url.startsWith('/api/chat/llm')) {
+            console.log('[vite-middleware] /api/chat/llm request received');
             try {
-              console.log('[vite-middleware] LLM Chat request received');
-              
-              // Read request body for POST requests
-              let bodyString = '';
-              if (req.method === 'POST') {
-                const chunks: Buffer[] = [];
-                for await (const chunk of req) {
-                  chunks.push(chunk);
-                }
-                bodyString = Buffer.concat(chunks).toString('utf-8');
-                console.log('[vite-middleware] Request body:', bodyString.substring(0, 100) + '...');
+              const method = req.method || 'GET';
+              if (method !== 'POST') {
+                res.statusCode = 405;
+                res.setHeader('content-type','application/json');
+                res.end(JSON.stringify({ success:false, error:'Method not allowed'}));
+                return;
               }
+              
+              // Read request body
+              const chunks: Buffer[] = [];
+              req.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+              });
+              
+              await new Promise<void>((resolve, reject) => {
+                req.on('end', () => resolve());
+                req.on('error', reject);
+              });
+              
+              const bodyBuf = Buffer.concat(chunks);
+              const bodyText = bodyBuf.toString('utf-8');
+              console.log('[vite-middleware] Request body length:', bodyText.length);
               
               const fullUrl = `http://localhost:${server.config.server.port}${url}`;
               const request = new Request(fullUrl, { 
-                method: req.method, 
-                headers: req.headers as any,
-                body: bodyString || undefined
-              });
+                method, 
+                headers: req.headers as any, 
+                body: bodyText,
+                duplex: 'half' 
+              } as any);
               
-              console.log('[vite-middleware] Calling LLM handler...');
               const response = await llmChatHandler(request);
-              console.log('[vite-middleware] LLM handler returned status:', response.status);
+              console.log('[vite-middleware] LLM handler response status:', response.status);
               
               res.statusCode = response.status;
               response.headers.forEach((value, key) => res.setHeader(key, value));
-              const responseBody = await response.arrayBuffer();
-              res.end(Buffer.from(responseBody));
-            } catch (e: any) {
-              console.error('[vite-middleware] LLM Chat error:', e);
+              const respBody = await response.arrayBuffer();
+              res.end(Buffer.from(respBody));
+            } catch (e:any) {
+              console.error('[vite-middleware] /api/chat/llm error:', e?.message, e?.stack);
               res.statusCode = 500;
-              res.setHeader("content-type", "application/json");
-              res.end(JSON.stringify({ error: e?.message || "Internal error", stack: e?.stack }));
+              res.setHeader('content-type','application/json');
+              res.end(JSON.stringify({ success:false, error: e?.message || 'Internal error'}));
             }
             return;
           }
-          
+
           next();
         });
       },

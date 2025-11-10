@@ -33,7 +33,7 @@ const BASE = 'https://api.imf.org/external/sdmx/2.1';
 const DATAMAPPER_BASE = 'https://www.imf.org/external/datamapper/api/v1';
 
 function envKey(): string | undefined {
-  const key = process.env.IMF_API_KEY || process.env.CHART_API_KEY || undefined;
+  const key =process.env.CHART_API_KEY || undefined;
   return key;
 }
 

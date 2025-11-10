@@ -510,6 +510,12 @@ const Dashboard = () => {
         }))
       } : null;
 
+      console.log('[Dashboard] Sending chat request:', { 
+        messageLength: chatMessage.length,
+        hasContext: !!contextData,
+        dataPoints: contextData?.data?.length || 0
+      });
+
       // Call LLM API
       const response = await fetch('/api/chat/llm', {
         method: 'POST',
@@ -522,25 +528,46 @@ const Dashboard = () => {
         })
       });
 
+      console.log('[Dashboard] Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`Failed to get response: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[Dashboard] Error response:', errorText);
+        throw new Error(`Failed to get response: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('[Dashboard] Response data:', { success: data.success, hasResponse: !!data.response });
       
       if (data.success) {
         setChatResponse(data.response);
+        toast({
+          title: "AI Response Received",
+          description: "Successfully got analysis from Gemini AI.",
+        });
       } else {
         throw new Error(data.error || 'Failed to get response');
       }
 
     } catch (error: any) {
-      console.error("Chat error:", error);
+      console.error("[Dashboard] Chat error:", error);
+      
+      // Check if it's a quota error (429)
+      const isQuotaError = error.message && (
+        error.message.includes('quota') || 
+        error.message.includes('429') ||
+        error.message.includes('exceeded')
+      );
+      
       toast({
-        title: "Chat Error",
-        description: error.message || "Failed to get AI response.",
+        title: isQuotaError ? "API Quota Exceeded" : "Chat Error",
+        description: isQuotaError 
+          ? "Your Gemini API quota has been exceeded. Please check your billing at https://aistudio.google.com/"
+          : error.message || "Failed to get AI response. Please try again.",
         variant: "destructive",
       });
+      
+      setChatResponse(`⚠️ ${error.message || "Failed to get AI response. Please check the console for details."}`);
     } finally {
       setChatLoading(false);
       setChatMessage("");
