@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Development files
+*.md
+!README.md
+
+# Editor directories
+.vscode
+.idea
+
+# Git
+.git
+.gitignore
+
+# Build cache
+.cache

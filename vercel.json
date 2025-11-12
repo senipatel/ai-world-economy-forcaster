@@ -1,0 +1,26 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/imf3",
+      "destination": "/api/imf3"
+    },
+    {
+      "source": "/api/chat/llm",
+      "destination": "/api/chat/llm"
+    }
+  ],
+  "env": {
+    "CHART_API_KEY": "@chart_api_key",
+    "LLM_API_KEY": "@llm_api_key",
+    "IMF_API_KEY": "@imf_api_key"
+  },
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  }
+}
