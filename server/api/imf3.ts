@@ -565,7 +565,16 @@ export default async function imf3Adapter(req: any, res: any) {
   try {
     // Construct a Request for environments that don't give you one directly
     const incomingUrl = req.url?.startsWith('http') ? req.url : `http://localhost${req.url}`;
-    const r = await handler(new Request(incomingUrl, { method: req.method, headers: req.headers } as any));
+    // Sanitize Node/Express headers (may include string[] values) to HeadersInit
+    const rawHeaders = (req && req.headers) ? req.headers : {};
+    const cleanHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawHeaders)) {
+      if (Array.isArray(v)) cleanHeaders[k] = v.join(', ');
+      else if (v == null) continue;
+      else cleanHeaders[k] = String(v);
+    }
+
+    const r = await handler(new Request(incomingUrl, { method: req.method, headers: cleanHeaders } as any));
     const body = await r.text();
     const contentType = r.headers.get('content-type') || 'application/json';
     res.status(r.status).setHeader('content-type', contentType).send(body);

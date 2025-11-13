@@ -10,7 +10,8 @@
     "noImplicitAny": false,
     "allowJs": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
+  "isolatedModules": true,
+  "allowImportingTsExtensions": true,
     "noEmit": true,
     "outDir": "./.vercel/output"
   },
