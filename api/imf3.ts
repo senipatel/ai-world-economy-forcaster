@@ -1,6 +1,6 @@
 /**
  * Vercel Serverless Function wrapper for IMF API
- * Delegates directly to the Express-style adapter exported from server/api/imf3.ts
+ * Use a static ESM import so Vercel bundles the dependency into this function.
  */
 import imf3Adapter from '../server/api/imf3';
 
