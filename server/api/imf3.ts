@@ -1,5 +1,5 @@
 /**
- * Production-ready IMF SDMX 2.1 API endpoint handler
+ * Production-ready IMF SDMX v2 REST API endpoint handler
  *
  * Supports:
  *  - Data fetching from IMF datasets (WEO, IFS, etc.)
@@ -12,6 +12,9 @@
  *  Data request:
  *    /api/imf3?type=data&flowRef=WEO&key=RUS.NGDPD&startPeriod=2020&endPeriod=2025
  *    /api/imf3?type=data&flowRef=IFS&key=A.US.NGDP_R_SA_IX&startPeriod=2015&endPeriod=2024
+ *
+ *  SDMX (v2) target URL shape for data:
+ *    https://api.imf.org/v2/sdmx/rest/data/{FLOW}/{KEY}?startPeriod=YYYY&endPeriod=YYYY
  *
  *  Availability check:
  *    /api/imf3?type=availableconstraint&flowRef=CPI&key=ALL&providerRef=all&componentID=REF_AREA&mode=exact&references=none
@@ -29,7 +32,8 @@ interface AttemptLog {
   dataPoints?: number;
 }
 
-const BASE = 'https://api.imf.org/external/sdmx/2.1';
+// IMF SDMX v2 REST base (ensures URLs like: https://api.imf.org/v2/sdmx/rest/data/{FLOW}/{KEY}?...)
+const BASE = 'https://api.imf.org/v2/sdmx/rest';
 const DATAMAPPER_BASE = 'https://www.imf.org/external/datamapper/api/v1';
 
 // Tuning constants (override via env if desired)
