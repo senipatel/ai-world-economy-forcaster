@@ -72,13 +72,27 @@ async function fetchResource(url: string, apiKey?: string): Promise<{ json: any;
   const headers: Record<string,string> = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
   };
-  if (apiKey) headers['Ocp-Apim-Subscription-Key'] = apiKey;
+
+  // Build request URL with optional subscription-key passthrough for IMF API gateways
+  let requestUrl = url;
+  if (apiKey) {
+    headers['Ocp-Apim-Subscription-Key'] = apiKey; // primary
+    headers['X-API-Key'] = apiKey;                 // fallback header used by some proxies
+    headers['apiKey'] = apiKey;                    // secondary fallback
+    try {
+      const u = new URL(url);
+      if (u.hostname.includes('api.imf.org') && !u.searchParams.has('subscription-key')) {
+        u.searchParams.set('subscription-key', apiKey);
+        requestUrl = u.toString();
+      }
+    } catch {}
+  }
 
   const controller = new AbortController();
   const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url, { headers, signal: controller.signal });
+    res = await fetch(requestUrl, { headers, signal: controller.signal });
   } catch (e: any) {
     clearTimeout(to);
     if (e?.name === 'AbortError') {
@@ -401,7 +415,7 @@ async function handler(req: Request): Promise<Response> {
     const targetUrl = buildAvailableConstraintUrl({ flowRef, key: pathKey, providerRef, componentID, query });
 
     try {
-      console.log(`[imf3] availableconstraint -> ${targetUrl}`);
+      console.log(`[imf3] availableconstraint -> ${targetUrl} (apiKey:${envKey() ? 'yes' : 'no'})`);
       const { json } = await fetchResource(targetUrl, apiKey);
       attempts.push({ url: targetUrl, success: true });
 
