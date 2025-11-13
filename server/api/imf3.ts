@@ -74,7 +74,9 @@ function buildDataUrl(params: { flowRef: string; key: string; query?: Record<str
 
 async function fetchResource(url: string, apiKey?: string): Promise<{ json: any; text: string }> {
   const headers: Record<string,string> = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    // Prefer SDMX-JSON responses from IMF REST
+    'Accept': 'application/vnd.sdmx.data+json;version=1.0.0, application/json'
   };
 
   // Build request URL with optional subscription-key passthrough for IMF API gateways
