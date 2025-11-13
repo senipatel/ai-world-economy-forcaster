@@ -32,6 +32,15 @@ interface AttemptLog {
 const BASE = 'https://api.imf.org/external/sdmx/2.1';
 const DATAMAPPER_BASE = 'https://www.imf.org/external/datamapper/api/v1';
 
+// Tuning constants (override via env if desired)
+const REQUEST_TIMEOUT_MS = Number(process.env.IMF_TIMEOUT_MS || 6500); // per outbound fetch
+const MAX_KEY_VARIANTS = Number(process.env.IMF_MAX_VARIANTS || 8); // cap variant attempts
+const CACHE_TTL_MS = Number(process.env.IMF_CACHE_TTL_MS || 5 * 60 * 1000); // 5 minutes
+const TIME_BUDGET_MS = Number(process.env.IMF_TIME_BUDGET_MS || 9000); // overall handler soft budget
+
+// Simple in-memory cache (persists for lifetime of the serverless instance)
+const _cache = new Map<string, { json: any; normalized: SdmxPoint[]; expires: number }>();
+
 function envKey(): string | undefined {
   const key = process.env.IMF_API_KEY || process.env.CHART_API_KEY || undefined;
   return key;
@@ -60,26 +69,32 @@ function buildDataUrl(params: { flowRef: string; key: string; query?: Record<str
 }
 
 async function fetchResource(url: string, apiKey?: string): Promise<{ json: any; text: string }> {
-  const headers: Record<string,string> = { 
+  const headers: Record<string,string> = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
   };
-  if (apiKey) {
-    headers['Ocp-Apim-Subscription-Key'] = apiKey;
+  if (apiKey) headers['Ocp-Apim-Subscription-Key'] = apiKey;
+
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers, signal: controller.signal });
+  } catch (e: any) {
+    clearTimeout(to);
+    if (e?.name === 'AbortError') {
+      throw new Error(`Timeout after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw e;
   }
+  clearTimeout(to);
 
-  const res = await fetch(url, { headers });
   const text = await res.text();
-
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
   }
-
-  // Try parsing as JSON
   try {
-    const parsed = JSON.parse(text);
-    return { json: parsed, text };
+    return { json: JSON.parse(text), text };
   } catch {
-    // Response might be XML or other format; return as raw text
     return { json: { raw: text }, text };
   }
 }
@@ -414,13 +429,27 @@ async function handler(req: Request): Promise<Response> {
   }
 
   // DATA request with smart fallbacks
-  const keyVariants = providedKey ? generateKeyVariants(providedKey) : ['ALL'];
+  const keyVariantsAll = providedKey ? generateKeyVariants(providedKey) : ['ALL'];
+  // Cap variant attempts to avoid long execution time
+  const keyVariants = keyVariantsAll.slice(0, MAX_KEY_VARIANTS);
   let finalJson: any = null;
   let finalData: SdmxPoint[] = [];
   let successUrl = '';
+  const startTs = Date.now();
 
   for (const keyVariant of keyVariants) {
     const targetUrl = buildDataUrl({ flowRef, key: keyVariant, query });
+    // Check cache
+    const cached = _cache.get(targetUrl);
+    if (cached && cached.expires > Date.now()) {
+      attempts.push({ url: targetUrl, success: true, dataPoints: cached.normalized.length });
+      if (cached.normalized.length > 0) {
+        finalJson = cached.json;
+        finalData = cached.normalized;
+        successUrl = targetUrl;
+        break;
+      }
+    }
     
     try {
       console.log(`[imf3] trying data -> ${targetUrl}`);
@@ -434,15 +463,23 @@ async function handler(req: Request): Promise<Response> {
         finalJson = json;
         finalData = normalized;
         successUrl = targetUrl;
+        _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
         break;
       } else {
         // Response OK but no observations; continue trying variants
         console.log(`[imf3] no data in response for key ${keyVariant}`);
+        _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
       }
     } catch (e: any) {
       attempts.push({ url: targetUrl, success: false, error: e?.message });
       console.error(`[imf3] fetch failed for key ${keyVariant}:`, e?.message);
       // Continue to next variant
+    }
+
+    // Soft time budget check
+    if (Date.now() - startTs > TIME_BUDGET_MS) {
+      attempts.push({ url: 'TIME_BUDGET_EXIT', success: false, error: `Exceeded time budget ${TIME_BUDGET_MS}ms` });
+      break;
     }
   }
 
@@ -458,7 +495,10 @@ async function handler(req: Request): Promise<Response> {
         indicatorLabel,
         timeRange,
         clientTs,
-        variantsTried: attempts.length
+        variantsTried: attempts.length,
+        maxVariants: MAX_KEY_VARIANTS,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        timeBudgetMs: TIME_BUDGET_MS
       },
       data: finalData,
       raw: finalJson,
@@ -480,7 +520,10 @@ async function handler(req: Request): Promise<Response> {
         freq,
         indicatorLabel,
         timeRange,
-        clientTs
+        clientTs,
+        maxVariants: MAX_KEY_VARIANTS,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        timeBudgetMs: TIME_BUDGET_MS
       },
       data: [],
       attempts
