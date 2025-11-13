@@ -1,115 +1,273 @@
-# Welcome to your Lovable project
+<div align="center">
+	<h1>AI World Economy Forecaster</h1>
+	<p><strong>Interactive economic intelligence dashboard</strong> combining IMF & World Bank macro data, geospatial visualization, advanced charting, and Gemini-powered analytical chat.</p>
+	<p>
+		<a href="#quick-start">Quick Start</a> ·
+		<a href="#features">Features</a> ·
+		<a href="#api-endpoints">API</a> ·
+		<a href="#architecture">Architecture</a>
+	</p>
+</div>
 
-## Project info
+---
 
-**URL**: https://lovable.dev/projects/4fecdfea-6606-4c1c-941c-decc83578cba
+## Overview
 
-## How can I edit this code?
+This project provides a modern economic analysis interface that lets users:
 
-There are several ways of editing your application.
+1. Fetch and explore macroeconomic indicators from the IMF (SDMX 2.1) and World Bank APIs.
+2. Visualize country-level trends via interactive maps and charts.
+3. Chat with an LLM (Google Gemini) for contextual explanations, summaries, and comparative insights.
+4. Export or snapshot data visualizations.
 
-**Use Lovable**
+Built with Vite + React + TypeScript + Tailwind CSS + Radix UI primitives (via shadcn-style component layer). Data fetching/state is powered by TanStack Query. The backend layer consists of lightweight serverless handlers (Vercel-style) for data normalization, multi-source fallbacks, and AI interactions.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4fecdfea-6606-4c1c-941c-decc83578cba) and start prompting.
+## Features
 
-Changes made via Lovable will be committed automatically to this repo.
+| Category | Highlights |
+|----------|------------|
+| Data Integration | IMF SDMX 2.1 (WEO/IFS/CPI/etc.), World Bank indicators with robust key normalization |
+| Resilience | Automatic key variant generation (frequency, country code 2 vs 3 letters), multi-attempt logging |
+| Visualization | Recharts time-series, React Simple Maps world choropleths, trend analysis summaries |
+| UI/UX | Dark/light theme toggle, responsive layout, rich accessible components (Radix UI), command palette |
+| Analytics Chat | Gemini models (2.5 Flash, 2.0 Flash experimental, 1.5 Flash/Pro) with context-driven prompts |
+| Performance | Client-side caching w/ React Query; selective server fetch; minimal bundle via Vite + SWC |
+| Extensibility | Modular endpoint handlers, clean utils, typed component primitives, zod-based form validation |
 
-**Use your preferred IDE**
+## Tech Stack
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Frontend:
+- React 18 + TypeScript
+- Vite (dev, build, preview)
+- Tailwind CSS + tailwindcss-animate + @tailwindcss/typography
+- Radix UI + shadcn component abstractions (`src/components/ui/*`)
+- Recharts, React Simple Maps, Embla Carousel, Framer Motion
+- React Router DOM (routing) & next-themes (theme persistence)
+- React Hook Form + Zod (forms & schema validation)
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Backend / Serverless:
+- Vercel serverless functions (`server/api/*`, `server/chat/*`)
+- Custom IMF SDMX handler (`imf3.ts`) with WEO & World Bank special cases
+- Gemini LLM integration (Google Generative Language API)
 
-Follow these steps:
+State/Utilities:
+- TanStack React Query (data cache & lifecycle)
+- Utility libs: `clsx`, `tailwind-merge`, `class-variance-authority`
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+Tooling:
+- ESLint (typescript-eslint, react-refresh, hooks)
+- TypeScript 5.x
+- PostCSS + Autoprefixer
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Architecture
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Configure environment variables
-# Copy .env.example to .env and add your IMF API key
-cp .env.example .env
-# Then edit .env and set: IMF_API_KEY=your-actual-key-here
-
-# Step 5: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```text
+├─ index.html                # Root HTML shell
+├─ vite.config.ts            # Vite + React SWC configuration
+├─ tailwind.config.ts        # Tailwind design tokens & content paths
+├─ src/
+│  ├─ main.tsx               # App bootstrap (React root)
+│  ├─ App.tsx                # Top-level layout + router outlet
+│  ├─ pages/                 # Route views (Landing, Dashboard, WorldMap, etc.)
+│  ├─ components/            # Shared UI components
+│  │  ├─ ui/                 # Shadcn/Radix wrapped primitives
+│  │  ├─ ThemeToggle.tsx     # Theme switcher
+│  │  └─ Logo.tsx            # Branding component
+│  ├─ data/indicators.txt    # Reference list of indicator codes
+│  ├─ hooks/                 # Custom hooks (mobile, toast)
+│  ├─ lib/utils.ts           # Utility helpers (classnames, etc.)
+│  └─ styles (App.css, index.css)
+├─ api/                      # Client-facing serverless endpoints (Vercel pattern)
+│  └─ chat/llm.ts            # Simplified chat handler
+├─ server/                   # Production-grade serverless handlers
+│  ├─ api/imf3.ts            # IMF & World Bank unified data handler
+│  └─ chat/LLMChat.ts        # Robust Gemini chat with model fallbacks
+└─ public/                   # Static assets (images, robots.txt)
 ```
 
-## IMF API Configuration
+### Data Flow (Fetch → Normalize → Present → Explain)
+1. UI triggers indicator query (country + code + time range).
+2. React Query calls `/api/imf3` with `type=data`.
+3. Handler chooses source (IMF SDMX, WEO DataMapper JSON, or World Bank) and normalizes to `{date,value}` array.
+4. Components render charts/maps + summary stats.
+5. User invokes chat; context (stats + raw series) forms part of Gemini prompt.
+6. Chat response displayed with attempt diagnostics for transparency.
 
-This project uses the International Monetary Fund (IMF) Data API to fetch economic indicators.
+## API Endpoints
 
-### Getting Your API Key
+### IMF / World Bank Unified
+`GET /api/imf3`
 
-1. Visit the [IMF API Portal](https://data.imf.org/en/Resource-Pages/IMF-API)
-2. Sign up for a free account
-3. Navigate to your profile/subscription page
-4. Copy your `Ocp-Apim-Subscription-Key`
-5. Add it to your `.env` file:
-   ```
-   IMF_API_KEY=your-subscription-key-here
-   ```
+Query Parameters:
+- `type`: `data` | `availableconstraint` (default: `data`)
+- `flowRef`: Dataset identifier (e.g. `IFS`, `WEO`, `CPI`, `WORLDBANK`)
+- `key`: Composite key (examples below)
+- `startPeriod`, `endPeriod`: Temporal bounds (year or date string)
+- `providerRef`, `componentID`, `mode`, `references`: For `availableconstraint` metadata queries
+- Additional passthrough meta: `freq`, `indicatorLabel`, `timeRange`, `clientTs`
 
-### Supported Endpoints
+Examples:
+```text
+/api/imf3?type=data&flowRef=WEO&key=A.US.NGDPD&startPeriod=2020&endPeriod=2025
+/api/imf3?type=data&flowRef=IFS&key=A.US.NGDP_R_SA_IX&startPeriod=2015&endPeriod=2024
+/api/imf3?type=availableconstraint&flowRef=CPI&key=ALL&providerRef=all&componentID=REF_AREA&mode=exact&references=none
+```
 
-The server handler (`server/api/imf3.ts`) supports:
+Returns (simplified):
+```jsonc
+{
+	"meta": { "flowRef": "IFS", "key": "A.US.NGDP_R_SA_IX", ... },
+	"data": [ { "date": "2015", "value": 12345 }, ... ],
+	"raw": {},
+	"attempts": [ { "url": "...", "success": true, "dataPoints": 11 } ]
+}
+```
 
-- **Data requests**: Fetch time-series economic data
-  ```
-  /api/imf3?type=data&flowRef=WEO&key=RUS.NGDPD&startPeriod=2020&endPeriod=2025
-  ```
+Key Variant Logic (automatic fallbacks):
+- Adds/removes frequency (e.g. `A.US.NGDPD` ↔ `US.NGDPD`)
+- Converts 2-letter ↔ 3-letter country codes for WEO/DataMapper
+- Tries alternate dimension orders when needed
 
-- **Availability checks**: Query available series for a dataset
-  ```
-  /api/imf3?type=availableconstraint&flowRef=CPI&key=ALL&componentID=REF_AREA
-  ```
+### Gemini Chat
+`POST /api/chat/llm` or `POST /server/chat/LLMChat` (depending on deployment routing)
 
-### Key Formats
+Body:
+```jsonc
+{
+	"message": "Explain recent GDP trends for the US.",
+	"context": {
+		"country": "United States",
+		"indicator": "GDP (current USD)",
+		"timeRange": "2015-2024",
+		"data": [ { "year": "2015", "value": 18219256 }, ... ]
+	}
+}
+```
 
-SDMX keys follow dataset-specific structures. Common patterns:
-- WEO (World Economic Outlook): `{COUNTRY_CODE}.{INDICATOR}` (e.g., `US.NGDPD`)
-- IFS (International Financial Statistics): `{FREQ}.{COUNTRY_CODE}.{INDICATOR}` (e.g., `A.US.NGDP_R_SA_IX`)
+Response:
+```json
+{ "success": true, "response": "GDP has shown..." }
+```
 
-The server automatically tries multiple variants (2-letter vs 3-letter codes, with/without frequency) to maximize data retrieval success.
+Advanced handler (`LLMChat.ts`) also supports model enumeration (`listModels`) and detailed attempt logs for multi-model fallbacks.
 
-**Edit a file directly in GitHub**
+## Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Create a `.env.local` (or Vercel project env) with:
 
-**Use GitHub Codespaces**
+```bash
+IMF_API_KEY=your_imf_subscription_key        # Optional; improves quota for IMF SDMX
+CHART_API_KEY=alternate_imf_key              # Optional secondary key
+LLM_API_KEY=your_gemini_api_key              # Required for server chat handler
+VITE_LLM_API_KEY=your_gemini_api_key         # If needed client-side (avoid exposing sensitive keys)
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Never commit real keys. Prefer only server-side usage for LLM.
 
-## What technologies are used for this project?
+## Quick Start
 
-This project is built with:
+```bash
+# Clone
+git clone https://github.com/senipatel/ai-world-economy-forcaster.git
+cd ai-world-economy-forcaster
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# Install (choose one)
+npm install
+# or
+pnpm install
 
-## How can I deploy this project?
+# Run dev
+npm run dev
 
-Simply open [Lovable](https://lovable.dev/projects/4fecdfea-6606-4c1c-941c-decc83578cba) and click on Share -> Publish.
+# Open
+http://localhost:5173
+```
 
-## Can I connect a custom domain to my Lovable project?
+## Scripts
 
-Yes, you can!
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | Production build (Vite) |
+| `npm run build:dev` | Development-mode build (useful for debugging size) |
+| `npm run preview` | Preview built assets locally |
+| `npm run lint` | Run ESLint across project |
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Styling & Components
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Tailwind utility-first styling; design tokens configured in `tailwind.config.ts`.
+- Radix UI primitives wrapped in reusable components under `src/components/ui`.
+- `class-variance-authority` + `tailwind-merge` ensure consistent variant and class composition.
+- Dark/light theme toggle integrated via `next-themes`.
+
+## Data Visualization
+
+- Time-series charts built with Recharts.
+- World map visualization with `react-simple-maps` (projection + geo features).
+- Carousel and animated transitions via Embla + Framer Motion.
+
+## Performance Considerations
+
+- React Query memoizes results and minimizes duplicate requests.
+- SDMX responses normalized into compact arrays to reduce render overhead.
+- Attempt logging helps diagnose slow/failing external calls.
+- Vite + SWC ensures fast cold starts and incremental builds.
+
+## Error Handling & Resilience
+
+- Multi-attempt logging for API calls (`attempts[]`) with URL & status details.
+- Graceful degradation if WEO SDMX returns empty (fallback to DataMapper JSON).
+- World Bank integration provides supplemental health/environment indicators.
+- Gemini handler rotates through model list; aborts early on auth/quota errors.
+
+## Extending
+
+Add a new data source:
+1. Create a new endpoint file in `server/api/`.
+2. Implement fetch + normalization to `{date,value}` shape.
+3. Return consistent `{ meta, data, raw, attempts }` envelope.
+4. Wire a front-end hook (React Query) and visualization component.
+
+## Deployment
+
+Designed for Vercel (see `vercel.json`). Steps:
+1. Set environment variables in the Vercel dashboard.
+2. Push `main` → triggers build & deployment.
+3. Test API routes (`/api/imf3`, `/api/chat/llm`).
+
+## Contributing
+
+Contributions welcome! Please:
+1. Open an issue describing enhancement or bug.
+2. Fork & create a feature branch.
+3. Add/update relevant documentation & basic tests (if logic added).
+4. Submit pull request referencing issue.
+
+## Roadmap / Ideas
+
+- Caching layer for IMF queries (edge KV or Redis)
+- Country comparison mode & multi-series overlay
+- Export options: CSV, PNG (currently exploring html2canvas)
+- More indicators autocomplete + fuzzy search
+- User accounts & saved dashboards
+
+## License
+
+No license specified yet. If you intend the code to be open source, consider adding an OSI-approved license (MIT, Apache-2.0, GPL-3.0). Until then, all rights reserved.
+
+## Disclaimer
+
+Economic data may lag or contain revisions. Always verify critical figures with official IMF / World Bank releases. LLM-generated analysis can produce errors—use judgment before relying on output for decisions.
+
+## Acknowledgments
+
+- International Monetary Fund SDMX API
+- World Bank Open Data API
+- Google Gemini Generative Language API
+- Radix UI & shadcn component patterns
+- TanStack React Query maintainers
+
+---
+
+> Built for rapid macroeconomic insight and experimentation.
+
