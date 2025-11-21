@@ -1,5 +1,5 @@
 /**
- * Production-ready IMF SDMX v2 REST API endpoint handler
+ * Production-ready IMF SDMX v2 REST API endpoint handler for Vercel
  *
  * Supports:
  *  - Data fetching from IMF datasets (WEO, IFS, etc.)
@@ -22,6 +22,8 @@
  * Returns:
  *  { meta: {...}, data: [{date, value}, ...], raw: {...}, attempts: [...] }
  */
+
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 type SdmxPoint = { date: string; value: number | null };
 
@@ -229,360 +231,317 @@ function generateKeyVariants(key: string): string[] {
   return [...new Set(variants)];
 }
 
-async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const type = (url.searchParams.get('type') || 'data').toLowerCase();
-  const flowRef = url.searchParams.get('flowRef') || url.searchParams.get('resourceID') || 'IFS';
-  const providedKey = url.searchParams.get('key') || '';
-  const providerRef = url.searchParams.get('providerRef') || 'all';
-  const componentID = url.searchParams.get('componentID') || 'REF_AREA';
-  const startPeriod = url.searchParams.get('startPeriod') || undefined;
-  const endPeriod = url.searchParams.get('endPeriod') || undefined;
-  const updatedAfter = url.searchParams.get('updatedAfter') || undefined;
-  const mode = url.searchParams.get('mode') || undefined;
-  const references = url.searchParams.get('references') || undefined;
-  
-  // Client metadata passthrough (for logging/diagnostics)
-  const freq = url.searchParams.get('freq') || undefined;
-  const indicatorLabel = url.searchParams.get('indicatorLabel') || undefined;
-  const timeRange = url.searchParams.get('timeRange') || undefined;
-  const clientTs = url.searchParams.get('clientTs') || undefined;
-
-  const apiKey = envKey();
-  const attempts: AttemptLog[] = [];
-
-  console.log(`[imf3] flowRef=${flowRef}, type=${type}, key=${providedKey}`);
-
-  // WEO dataset: Use DataMapper API (JSON format) instead of SDMX which returns empty data
-  if (flowRef.toUpperCase() === 'WEO' && type === 'data') {
-    // Parse key: expected format is "A.LK.NGDPD" → extract country (LK) and indicator (NGDPD)
-    const keyParts = providedKey.split('.');
-    const countryCode = keyParts.length === 3 ? keyParts[1] : (keyParts.length === 2 ? keyParts[0] : 'US');
-    const indicator = keyParts[keyParts.length - 1];
-    
-    // Convert 2-letter to 3-letter ISO code for DataMapper (LK→LKA, US→USA)
-    const iso2to3: Record<string, string> = {
-      "US": "USA", "GB": "GBR", "DE": "DEU", "FR": "FRA", "IT": "ITA", "ES": "ESP",
-      "JP": "JPN", "CN": "CHN", "IN": "IND", "BR": "BRA", "RU": "RUS", "CA": "CAN",
-      "AU": "AUS", "MX": "MEX", "KR": "KOR", "ID": "IDN", "TR": "TUR", "SA": "SAU",
-      "AR": "ARG", "ZA": "ZAF", "NG": "NGA", "EG": "EGY", "PK": "PAK", "BD": "BGD",
-      "VN": "VNM", "PH": "PHL", "TH": "THA", "MY": "MYS", "SG": "SGP", "NL": "NLD",
-      "BE": "BEL", "CH": "CHE", "SE": "SWE", "NO": "NOR", "DK": "DNK", "FI": "FIN",
-      "PL": "POL", "AT": "AUT", "CZ": "CZE", "HU": "HUN", "RO": "ROU", "GR": "GRC",
-      "PT": "PRT", "IE": "IRL", "NZ": "NZL", "IL": "ISR", "CL": "CHL", "CO": "COL",
-      "PE": "PER", "VE": "VEN", "EC": "ECU", "UA": "UKR", "IQ": "IRQ", "IR": "IRN",
-      "DZ": "DZA", "MA": "MAR", "TN": "TUN", "KE": "KEN", "ET": "ETH", "GH": "GHA",
-      "LK": "LKA", "NP": "NPL", "AF": "AFG", "MM": "MMR", "KH": "KHM", "LA": "LAO",
-    };
-    const country3 = iso2to3[countryCode.toUpperCase()] || countryCode;
-    
-    const dmUrl = `${DATAMAPPER_BASE}/${indicator}/${country3}`;
-    
-    try {
-      const res = await fetch(dmUrl, {
-        headers: apiKey ? { 'Ocp-Apim-Subscription-Key': apiKey } : {}
-      });
-      
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      const json: any = await res.json();
-      const values = json?.values?.[indicator]?.[country3];
-      
-      if (!values || typeof values !== 'object') {
-        throw new Error('No data in response');
-      }
-      
-      // Convert {2020: 84.5, 2021: 88.2, ...} to [{date: '2020', value: 84.5}, ...]
-      // Filter by startPeriod and endPeriod
-      const startYear = startPeriod ? parseInt(startPeriod) : 0;
-      const endYear = endPeriod ? parseInt(endPeriod) : 9999;
-      
-      const data: SdmxPoint[] = Object.entries(values)
-        .map(([year, val]) => ({ date: String(year), value: typeof val === 'number' ? val : null }))
-        .filter(p => {
-          if (p.value === null) return false;
-          const y = parseInt(p.date);
-          return y >= startYear && y <= endYear;
-        })
-        .sort((a, b) => a.date.localeCompare(b.date));
-      
-      attempts.push({ url: dmUrl, success: true, dataPoints: data.length });
-      
-      return new Response(JSON.stringify({
-        meta: { type, flowRef: 'WEO', key: `${country3}.${indicator}`, url: dmUrl, freq: 'A', indicatorLabel, timeRange, clientTs },
-        data,
-        raw: json,
-        attempts
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    } catch (e: any) {
-      attempts.push({ url: dmUrl, success: false, error: e?.message });
-      // Fall through to SDMX fallback
-    }
-  }
-
-  // World Bank dataset: Use World Bank API for health and environment indicators
-  if (flowRef.toUpperCase() === 'WORLDBANK' && type === 'data') {
-    // Parse key to extract country and indicator
-    // Format: A.IN.SH.XPD.CHEX.GD.ZS → freq=A, country=IN, indicator=SH.XPD.CHEX.GD.ZS
-    const keyParts = providedKey.split('.');
-    const freq = keyParts[0]; // A, M, Q
-    const countryCode = keyParts[1]; // IN, LK, US, etc.
-    const indicator = keyParts.slice(2).join('.'); // Everything after country code
-    
-    // World Bank uses 3-letter ISO codes
-    const iso2to3: Record<string, string> = {
-      "US": "USA", "GB": "GBR", "DE": "DEU", "FR": "FRA", "IT": "ITA", "ES": "ESP",
-      "JP": "JPN", "CN": "CHN", "IN": "IND", "BR": "BRA", "RU": "RUS", "CA": "CAN",
-      "AU": "AUS", "MX": "MEX", "KR": "KOR", "ID": "IDN", "TR": "TUR", "SA": "SAU",
-      "AR": "ARG", "ZA": "ZAF", "NG": "NGA", "EG": "EGY", "PK": "PAK", "BD": "BGD",
-      "VN": "VNM", "PH": "PHL", "TH": "THA", "MY": "MYS", "SG": "SGP", "NL": "NLD",
-      "BE": "BEL", "CH": "CHE", "SE": "SWE", "NO": "NOR", "DK": "DNK", "FI": "FIN",
-      "PL": "POL", "AT": "AUT", "CZ": "CZE", "HU": "HUN", "RO": "ROU", "GR": "GRC",
-      "PT": "PRT", "IE": "IRL", "NZ": "NZL", "IL": "ISR", "CL": "CHL", "CO": "COL",
-      "PE": "PER", "VE": "VEN", "EC": "ECU", "UA": "UKR", "IQ": "IRQ", "IR": "IRN",
-      "DZ": "DZA", "MA": "MAR", "TN": "TUN", "KE": "KEN", "ET": "ETH", "GH": "GHA",
-      "LK": "LKA", "NP": "NPL", "AF": "AFG", "MM": "MMR", "KH": "KHM", "LA": "LAO",
-    };
-    const country3 = iso2to3[countryCode.toUpperCase()] || countryCode.toUpperCase();
-    
-    console.log(`[imf3] World Bank: country=${countryCode} → ${country3}, indicator=${indicator}`);
-    
-    // World Bank API format: /v2/country/{country}/indicator/{indicator}?format=json&date={start}:{end}
-    const startYear = startPeriod || '1980';
-    const endYear = endPeriod || new Date().getFullYear().toString();
-    const wbUrl = `https://api.worldbank.org/v2/country/${country3}/indicator/${indicator}?format=json&date=${startYear}:${endYear}&per_page=500`;
-    
-    try {
-      console.log(`[imf3] World Bank -> ${wbUrl}`);
-      const res = await fetch(wbUrl);
-      
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      const json: any = await res.json();
-      console.log(`[imf3] World Bank response:`, JSON.stringify(json).substring(0, 500));
-      
-      // World Bank returns [metadata, data_array]
-      const dataArray = Array.isArray(json) && json.length > 1 ? json[1] : [];
-      
-      if (!Array.isArray(dataArray) || dataArray.length === 0) {
-        throw new Error('No data in response');
-      }
-      
-      // Convert World Bank format to our format
-      // World Bank: [{date: "2020", value: 123.45, ...}, ...]
-      const data: SdmxPoint[] = dataArray
-        .filter((item: any) => item.value !== null && item.value !== undefined)
-        .map((item: any) => ({
-          date: String(item.date || item.year),
-          value: typeof item.value === 'number' ? item.value : parseFloat(item.value)
-        }))
-        .filter(p => !isNaN(p.value as number))
-        .sort((a, b) => a.date.localeCompare(b.date));
-      
-      attempts.push({ url: wbUrl, success: true, dataPoints: data.length });
-      
-      console.log(`[imf3] World Bank returned ${data.length} points`);
-      
-      return new Response(JSON.stringify({
-        meta: { type, flowRef: 'WORLDBANK', key: `${country3}.${indicator}`, url: wbUrl, freq: 'A', indicatorLabel, timeRange, clientTs },
-        data,
-        raw: json,
-        attempts
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    } catch (e: any) {
-      console.error(`[imf3] World Bank failed:`, e?.message);
-      attempts.push({ url: wbUrl, success: false, error: e?.message });
-      // Return error for World Bank
-      return new Response(JSON.stringify({
-        error: e?.message || 'World Bank data unavailable',
-        message: `Failed to fetch from World Bank API`,
-        meta: { type, flowRef: 'WORLDBANK', requestedKey: providedKey, indicatorLabel, timeRange, clientTs },
-        data: [],
-        attempts
-      }), {
-        status: 404,
-        headers: { 'content-type': 'application/json' }
-      });
-    }
-  }
-
-  // Build query object
-  const query: Record<string,string|undefined> = { startPeriod, endPeriod, updatedAfter, mode, references };
-
-  // For availability constraint, use provided key or 'ALL'
-  if (type === 'availableconstraint') {
-    const pathKey = providedKey || 'ALL';
-    const targetUrl = buildAvailableConstraintUrl({ flowRef, key: pathKey, providerRef, componentID, query });
-
-    try {
-      console.log(`[imf3] availableconstraint -> ${targetUrl} (apiKey:${envKey() ? 'yes' : 'no'})`);
-      const { json } = await fetchResource(targetUrl, apiKey);
-      attempts.push({ url: targetUrl, success: true });
-
-      return new Response(JSON.stringify({
-        meta: { type, flowRef, key: pathKey, providerRef, componentID, url: targetUrl, freq, indicatorLabel, timeRange, clientTs },
-        data: [],
-        raw: json,
-        attempts
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    } catch (e: any) {
-      attempts.push({ url: targetUrl, success: false, error: e?.message });
-      console.error(`[imf3] availableconstraint failed:`, e?.message);
-      return new Response(JSON.stringify({
-        error: e?.message || 'Availability query failed',
-        meta: { type, flowRef, key: pathKey, url: targetUrl },
-        attempts
-      }), {
-        status: 502,
-        headers: { 'content-type': 'application/json' }
-      });
-    }
-  }
-
-  // DATA request with smart fallbacks
-  const keyVariantsAll = providedKey ? generateKeyVariants(providedKey) : ['ALL'];
-  // Cap variant attempts to avoid long execution time
-  const keyVariants = keyVariantsAll.slice(0, MAX_KEY_VARIANTS);
-  let finalJson: any = null;
-  let finalData: SdmxPoint[] = [];
-  let successUrl = '';
-  const startTs = Date.now();
-
-  for (const keyVariant of keyVariants) {
-    const targetUrl = buildDataUrl({ flowRef, key: keyVariant, query });
-    // Check cache
-    const cached = _cache.get(targetUrl);
-    if (cached && cached.expires > Date.now()) {
-      attempts.push({ url: targetUrl, success: true, dataPoints: cached.normalized.length });
-      if (cached.normalized.length > 0) {
-        finalJson = cached.json;
-        finalData = cached.normalized;
-        successUrl = targetUrl;
-        break;
-      }
-    }
-    
-    try {
-      console.log(`[imf3] trying data -> ${targetUrl}`);
-      const { json } = await fetchResource(targetUrl, apiKey);
-      const normalized = normalizeData(json);
-      
-      attempts.push({ url: targetUrl, success: true, dataPoints: normalized.length });
-
-      if (normalized.length > 0) {
-        // Found data! Use this variant
-        finalJson = json;
-        finalData = normalized;
-        successUrl = targetUrl;
-        _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
-        break;
-      } else {
-        // Response OK but no observations; continue trying variants
-        console.log(`[imf3] no data in response for key ${keyVariant}`);
-        _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
-      }
-    } catch (e: any) {
-      attempts.push({ url: targetUrl, success: false, error: e?.message });
-      console.error(`[imf3] fetch failed for key ${keyVariant}:`, e?.message);
-      // Continue to next variant
-    }
-
-    // Soft time budget check
-    if (Date.now() - startTs > TIME_BUDGET_MS) {
-      attempts.push({ url: 'TIME_BUDGET_EXIT', success: false, error: `Exceeded time budget ${TIME_BUDGET_MS}ms` });
-      break;
-    }
-  }
-
-  // Build response
-  if (finalData.length > 0) {
-    return new Response(JSON.stringify({
-      meta: {
-        type,
-        flowRef,
-        key: successUrl.split('/').pop()?.split('?')[0] || providedKey,
-        url: successUrl,
-        freq,
-        indicatorLabel,
-        timeRange,
-        clientTs,
-        variantsTried: attempts.length,
-        maxVariants: MAX_KEY_VARIANTS,
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        timeBudgetMs: TIME_BUDGET_MS
-      },
-      data: finalData,
-      raw: finalJson,
-      attempts
-    }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' }
-    });
-  } else {
-    // All variants failed or returned no data
-    const lastAttempt = attempts[attempts.length - 1];
-    return new Response(JSON.stringify({
-      error: lastAttempt?.error || 'No data available for any key variant',
-      message: `Tried ${attempts.length} key variant(s) for ${flowRef}. Check meta.attempts for details.`,
-      meta: {
-        type,
-        flowRef,
-        requestedKey: providedKey,
-        freq,
-        indicatorLabel,
-        timeRange,
-        clientTs,
-        maxVariants: MAX_KEY_VARIANTS,
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        timeBudgetMs: TIME_BUDGET_MS
-      },
-      data: [],
-      attempts
-    }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' }
-    });
-  }
-}
-
-/**
- * Export helpers for common Node/Express/Serverless adapters:
- *
- * - For serverless (Edge / Cloudflare Workers) you can export `onRequest` / default = handler as used below.
- * - For Express: wrap handler by creating a Request-like object or use the "imf3" wrapper below (see export default).
- */
-
-export default async function imf3Adapter(req: any, res: any) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Construct a Request for environments that don't give you one directly
-    const incomingUrl = req.url?.startsWith('http') ? req.url : `http://localhost${req.url}`;
-    // Sanitize Node/Express headers (may include string[] values) to HeadersInit
-    const rawHeaders = (req && req.headers) ? req.headers : {};
-    const cleanHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(rawHeaders)) {
-      if (Array.isArray(v)) cleanHeaders[k] = v.join(', ');
-      else if (v == null) continue;
-      else cleanHeaders[k] = String(v);
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
     }
 
-    const r = await handler(new Request(incomingUrl, { method: req.method, headers: cleanHeaders } as any));
-    const body = await r.text();
-    const contentType = r.headers.get('content-type') || 'application/json';
-    res.status(r.status).setHeader('content-type', contentType).send(body);
+    const { query } = req;
+    const type = (String(query.type || 'data')).toLowerCase();
+    const flowRef = String(query.flowRef || query.resourceID || 'IFS');
+    const providedKey = String(query.key || '');
+    const providerRef = String(query.providerRef || 'all');
+    const componentID = String(query.componentID || 'REF_AREA');
+    const startPeriod = query.startPeriod ? String(query.startPeriod) : undefined;
+    const endPeriod = query.endPeriod ? String(query.endPeriod) : undefined;
+    const updatedAfter = query.updatedAfter ? String(query.updatedAfter) : undefined;
+    const mode = query.mode ? String(query.mode) : undefined;
+    const references = query.references ? String(query.references) : undefined;
+    
+    // Client metadata passthrough (for logging/diagnostics)
+    const freq = query.freq ? String(query.freq) : undefined;
+    const indicatorLabel = query.indicatorLabel ? String(query.indicatorLabel) : undefined;
+    const timeRange = query.timeRange ? String(query.timeRange) : undefined;
+    const clientTs = query.clientTs ? String(query.clientTs) : undefined;
+
+    const apiKey = envKey();
+    const attempts: AttemptLog[] = [];
+
+    console.log(`[imf3] flowRef=${flowRef}, type=${type}, key=${providedKey}`);
+
+    // WEO dataset: Use DataMapper API (JSON format) instead of SDMX which returns empty data
+    if (flowRef.toUpperCase() === 'WEO' && type === 'data') {
+      // Parse key: expected format is "A.LK.NGDPD" → extract country (LK) and indicator (NGDPD)
+      const keyParts = providedKey.split('.');
+      const countryCode = keyParts.length === 3 ? keyParts[1] : (keyParts.length === 2 ? keyParts[0] : 'US');
+      const indicator = keyParts[keyParts.length - 1];
+      
+      // Convert 2-letter to 3-letter ISO code for DataMapper (LK→LKA, US→USA)
+      const iso2to3: Record<string, string> = {
+        "US": "USA", "GB": "GBR", "DE": "DEU", "FR": "FRA", "IT": "ITA", "ES": "ESP",
+        "JP": "JPN", "CN": "CHN", "IN": "IND", "BR": "BRA", "RU": "RUS", "CA": "CAN",
+        "AU": "AUS", "MX": "MEX", "KR": "KOR", "ID": "IDN", "TR": "TUR", "SA": "SAU",
+        "AR": "ARG", "ZA": "ZAF", "NG": "NGA", "EG": "EGY", "PK": "PAK", "BD": "BGD",
+        "VN": "VNM", "PH": "PHL", "TH": "THA", "MY": "MYS", "SG": "SGP", "NL": "NLD",
+        "BE": "BEL", "CH": "CHE", "SE": "SWE", "NO": "NOR", "DK": "DNK", "FI": "FIN",
+        "PL": "POL", "AT": "AUT", "CZ": "CZE", "HU": "HUN", "RO": "ROU", "GR": "GRC",
+        "PT": "PRT", "IE": "IRL", "NZ": "NZL", "IL": "ISR", "CL": "CHL", "CO": "COL",
+        "PE": "PER", "VE": "VEN", "EC": "ECU", "UA": "UKR", "IQ": "IRQ", "IR": "IRN",
+        "DZ": "DZA", "MA": "MAR", "TN": "TUN", "KE": "KEN", "ET": "ETH", "GH": "GHA",
+        "LK": "LKA", "NP": "NPL", "AF": "AFG", "MM": "MMR", "KH": "KHM", "LA": "LAO",
+      };
+      const country3 = iso2to3[countryCode.toUpperCase()] || countryCode;
+      
+      const dmUrl = `${DATAMAPPER_BASE}/${indicator}/${country3}`;
+      
+      try {
+        const fetchRes = await fetch(dmUrl, {
+          headers: apiKey ? { 'Ocp-Apim-Subscription-Key': apiKey } : {}
+        });
+        
+        if (!fetchRes.ok) throw new Error(`HTTP ${fetchRes.status}`);
+        
+        const json: any = await fetchRes.json();
+        const values = json?.values?.[indicator]?.[country3];
+        
+        if (!values || typeof values !== 'object') {
+          throw new Error('No data in response');
+        }
+        
+        // Convert {2020: 84.5, 2021: 88.2, ...} to [{date: '2020', value: 84.5}, ...]
+        // Filter by startPeriod and endPeriod
+        const startYear = startPeriod ? parseInt(startPeriod) : 0;
+        const endYear = endPeriod ? parseInt(endPeriod) : 9999;
+        
+        const data: SdmxPoint[] = Object.entries(values)
+          .map(([year, val]) => ({ date: String(year), value: typeof val === 'number' ? val : null }))
+          .filter(p => {
+            if (p.value === null) return false;
+            const y = parseInt(p.date);
+            return y >= startYear && y <= endYear;
+          })
+          .sort((a, b) => a.date.localeCompare(b.date));
+        
+        attempts.push({ url: dmUrl, success: true, dataPoints: data.length });
+        
+        return res.status(200).json({
+          meta: { type, flowRef: 'WEO', key: `${country3}.${indicator}`, url: dmUrl, freq: 'A', indicatorLabel, timeRange, clientTs },
+          data,
+          raw: json,
+          attempts
+        });
+      } catch (e: any) {
+        attempts.push({ url: dmUrl, success: false, error: e?.message });
+        // Fall through to SDMX fallback
+      }
+    }
+
+    // World Bank dataset: Use World Bank API for health and environment indicators
+    if (flowRef.toUpperCase() === 'WORLDBANK' && type === 'data') {
+      // Parse key to extract country and indicator
+      const keyParts = providedKey.split('.');
+      const countryCode = keyParts[1]; // IN, LK, US, etc.
+      const indicator = keyParts.slice(2).join('.'); // Everything after country code
+      
+      // World Bank uses 3-letter ISO codes
+      const iso2to3: Record<string, string> = {
+        "US": "USA", "GB": "GBR", "DE": "DEU", "FR": "FRA", "IT": "ITA", "ES": "ESP",
+        "JP": "JPN", "CN": "CHN", "IN": "IND", "BR": "BRA", "RU": "RUS", "CA": "CAN",
+        "AU": "AUS", "MX": "MEX", "KR": "KOR", "ID": "IDN", "TR": "TUR", "SA": "SAU",
+        "AR": "ARG", "ZA": "ZAF", "NG": "NGA", "EG": "EGY", "PK": "PAK", "BD": "BGD",
+        "VN": "VNM", "PH": "PHL", "TH": "THA", "MY": "MYS", "SG": "SGP", "NL": "NLD",
+        "BE": "BEL", "CH": "CHE", "SE": "SWE", "NO": "NOR", "DK": "DNK", "FI": "FIN",
+        "PL": "POL", "AT": "AUT", "CZ": "CZE", "HU": "HUN", "RO": "ROU", "GR": "GRC",
+        "PT": "PRT", "IE": "IRL", "NZ": "NZL", "IL": "ISR", "CL": "CHL", "CO": "COL",
+        "PE": "PER", "VE": "VEN", "EC": "ECU", "UA": "UKR", "IQ": "IRQ", "IR": "IRN",
+        "DZ": "DZA", "MA": "MAR", "TN": "TUN", "KE": "KEN", "ET": "ETH", "GH": "GHA",
+        "LK": "LKA", "NP": "NPL", "AF": "AFG", "MM": "MMR", "KH": "KHM", "LA": "LAO",
+      };
+      const country3 = iso2to3[countryCode.toUpperCase()] || countryCode.toUpperCase();
+      
+      console.log(`[imf3] World Bank: country=${countryCode} → ${country3}, indicator=${indicator}`);
+      
+      // World Bank API format: /v2/country/{country}/indicator/{indicator}?format=json&date={start}:{end}
+      const startYear = startPeriod || '1980';
+      const endYear = endPeriod || new Date().getFullYear().toString();
+      const wbUrl = `https://api.worldbank.org/v2/country/${country3}/indicator/${indicator}?format=json&date=${startYear}:${endYear}&per_page=500`;
+      
+      try {
+        console.log(`[imf3] World Bank -> ${wbUrl}`);
+        const fetchRes = await fetch(wbUrl);
+        
+        if (!fetchRes.ok) throw new Error(`HTTP ${fetchRes.status}`);
+        
+        const json: any = await fetchRes.json();
+        console.log(`[imf3] World Bank response:`, JSON.stringify(json).substring(0, 500));
+        
+        // World Bank returns [metadata, data_array]
+        const dataArray = Array.isArray(json) && json.length > 1 ? json[1] : [];
+        
+        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+          throw new Error('No data in response');
+        }
+        
+        // Convert World Bank format to our format
+        const data: SdmxPoint[] = dataArray
+          .filter((item: any) => item.value !== null && item.value !== undefined)
+          .map((item: any) => ({
+            date: String(item.date || item.year),
+            value: typeof item.value === 'number' ? item.value : parseFloat(item.value)
+          }))
+          .filter(p => !isNaN(p.value as number))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        
+        attempts.push({ url: wbUrl, success: true, dataPoints: data.length });
+        
+        console.log(`[imf3] World Bank returned ${data.length} points`);
+        
+        return res.status(200).json({
+          meta: { type, flowRef: 'WORLDBANK', key: `${country3}.${indicator}`, url: wbUrl, freq: 'A', indicatorLabel, timeRange, clientTs },
+          data,
+          raw: json,
+          attempts
+        });
+      } catch (e: any) {
+        console.error(`[imf3] World Bank failed:`, e?.message);
+        attempts.push({ url: wbUrl, success: false, error: e?.message });
+        return res.status(404).json({
+          error: e?.message || 'World Bank data unavailable',
+          message: `Failed to fetch from World Bank API`,
+          meta: { type, flowRef: 'WORLDBANK', requestedKey: providedKey, indicatorLabel, timeRange, clientTs },
+          data: [],
+          attempts
+        });
+      }
+    }
+
+    // Build query object
+    const queryParams: Record<string,string|undefined> = { startPeriod, endPeriod, updatedAfter, mode, references };
+
+    // For availability constraint, use provided key or 'ALL'
+    if (type === 'availableconstraint') {
+      const pathKey = providedKey || 'ALL';
+      const targetUrl = buildAvailableConstraintUrl({ flowRef, key: pathKey, providerRef, componentID, query: queryParams });
+
+      try {
+        console.log(`[imf3] availableconstraint -> ${targetUrl}`);
+        const { json } = await fetchResource(targetUrl, apiKey);
+        attempts.push({ url: targetUrl, success: true });
+
+        return res.status(200).json({
+          meta: { type, flowRef, key: pathKey, providerRef, componentID, url: targetUrl, freq, indicatorLabel, timeRange, clientTs },
+          data: [],
+          raw: json,
+          attempts
+        });
+      } catch (e: any) {
+        attempts.push({ url: targetUrl, success: false, error: e?.message });
+        console.error(`[imf3] availableconstraint failed:`, e?.message);
+        return res.status(502).json({
+          error: e?.message || 'Availability query failed',
+          meta: { type, flowRef, key: pathKey, url: targetUrl },
+          attempts
+        });
+      }
+    }
+
+    // DATA request with smart fallbacks
+    const keyVariantsAll = providedKey ? generateKeyVariants(providedKey) : ['ALL'];
+    const keyVariants = keyVariantsAll.slice(0, MAX_KEY_VARIANTS);
+    let finalJson: any = null;
+    let finalData: SdmxPoint[] = [];
+    let successUrl = '';
+    const startTs = Date.now();
+
+    for (const keyVariant of keyVariants) {
+      const targetUrl = buildDataUrl({ flowRef, key: keyVariant, query: queryParams });
+      
+      // Check cache
+      const cached = _cache.get(targetUrl);
+      if (cached && cached.expires > Date.now()) {
+        attempts.push({ url: targetUrl, success: true, dataPoints: cached.normalized.length });
+        if (cached.normalized.length > 0) {
+          finalJson = cached.json;
+          finalData = cached.normalized;
+          successUrl = targetUrl;
+          break;
+        }
+      }
+      
+      try {
+        console.log(`[imf3] trying data -> ${targetUrl}`);
+        const { json } = await fetchResource(targetUrl, apiKey);
+        const normalized = normalizeData(json);
+        
+        attempts.push({ url: targetUrl, success: true, dataPoints: normalized.length });
+
+        if (normalized.length > 0) {
+          finalJson = json;
+          finalData = normalized;
+          successUrl = targetUrl;
+          _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
+          break;
+        } else {
+          console.log(`[imf3] no data in response for key ${keyVariant}`);
+          _cache.set(targetUrl, { json, normalized, expires: Date.now() + CACHE_TTL_MS });
+        }
+      } catch (e: any) {
+        attempts.push({ url: targetUrl, success: false, error: e?.message });
+        console.error(`[imf3] fetch failed for key ${keyVariant}:`, e?.message);
+      }
+
+      if (Date.now() - startTs > TIME_BUDGET_MS) {
+        attempts.push({ url: 'TIME_BUDGET_EXIT', success: false, error: `Exceeded time budget ${TIME_BUDGET_MS}ms` });
+        break;
+      }
+    }
+
+    // Build response
+    if (finalData.length > 0) {
+      return res.status(200).json({
+        meta: {
+          type,
+          flowRef,
+          key: successUrl.split('/').pop()?.split('?')[0] || providedKey,
+          url: successUrl,
+          freq,
+          indicatorLabel,
+          timeRange,
+          clientTs,
+          variantsTried: attempts.length,
+          maxVariants: MAX_KEY_VARIANTS,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          timeBudgetMs: TIME_BUDGET_MS
+        },
+        data: finalData,
+        raw: finalJson,
+        attempts
+      });
+    } else {
+      const lastAttempt = attempts[attempts.length - 1];
+      return res.status(404).json({
+        error: lastAttempt?.error || 'No data available for any key variant',
+        message: `Tried ${attempts.length} key variant(s) for ${flowRef}. Check meta.attempts for details.`,
+        meta: {
+          type,
+          flowRef,
+          requestedKey: providedKey,
+          freq,
+          indicatorLabel,
+          timeRange,
+          clientTs,
+          maxVariants: MAX_KEY_VARIANTS,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          timeBudgetMs: TIME_BUDGET_MS
+        },
+        data: [],
+        attempts
+      });
+    }
   } catch (err: any) {
-    console.error('imf3Adapter error', err);
-    res.status(500).json({ error: err?.message || 'Internal Server Error' });
+    console.error('[imf3] Handler error:', err);
+    return res.status(500).json({ 
+      error: err?.message || 'Internal Server Error',
+      stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined
+    });
   }
 }
 
-// Serverless-friendly export
-export const onRequest = handler;
+export default handler;

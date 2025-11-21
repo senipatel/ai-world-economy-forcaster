@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";  
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -297,13 +297,11 @@ const Dashboard = () => {
       setError(null);
       try {
   const freqLetter = FREQ_LETTER[frequency] || "A";
-  // WEO format: A.US.NGDPD (Frequency.Country.Indicator)
-  // IFS format can vary, but commonly: A.US.NGDP_R_SA_IX
   const key3 = `${freqLetter}.${refArea}.${indicatorCode}`;
   
         const params = new URLSearchParams({
           type: "data",
-          resourceID: dataset,
+          flowRef: dataset,
           key: key3,
           startPeriod: startP,
           endPeriod: endP,
@@ -315,6 +313,14 @@ const Dashboard = () => {
         params.set("clientTs", new Date().toISOString());
         
         const apiUrl = `/api/imf3?${params.toString()}`;
+        
+        console.log('[Dashboard] API Request:', {
+          dataset,
+          indicatorCode,
+          refArea,
+          key: key3,
+          url: apiUrl
+        });
         
         const key = cacheKey({ dataset, code: indicatorCode, refArea, start: startP, end: endP, freq: freqLetter });
         const cached = loadCache(key);

@@ -1,10 +1,20 @@
 /**
- * Vercel Serverless Function wrapper for IMF API
- * Use a static ESM import so Vercel bundles the dependency into this function.
+ * Vercel Serverless Function for IMF API
+ * Inline implementation to avoid module resolution issues
  */
-import imf3Adapter from '../server/api/imf3';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default imf3Adapter;
-
-// Ensure Node.js runtime on Vercel (not Edge)
-// No explicit runtime override here; Vercel will use the default Node.js runtime.
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    // Dynamic import to load the handler at runtime
+    const { default: imf3Adapter } = await import('../server/api/imf3.js');
+    return await imf3Adapter(req, res);
+  } catch (error: any) {
+    console.error('[api/imf3] Failed to load handler:', error);
+    res.status(500).json({ 
+      error: 'Failed to load IMF API handler',
+      message: error?.message || 'Internal server error',
+      stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    });
+  }
+}
